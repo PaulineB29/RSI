@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Discipline V5.16 — Market Auto + Kraken</title>
+<style>
+:root{--bg:#0d1210;--panel:#151c19;--panel2:#101613;--line:#29332f;--ink:#e8ede9;--dim:#8b9892;--accent:#d4a24e;--green:#70b07f;--red:#c9634a;--blue:#78a9c9;--mono:"IBM Plex Mono","SF Mono",Consolas,monospace;--sans:Inter,"Helvetica Neue",Arial,sans-serif}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+.wrap{max-width:1040px;margin:0 auto;padding:2.5rem 1.25rem 4rem}
+h1{font-size:1.45rem;font-weight:600;margin:0 0 .35rem}.subtitle{color:var(--dim);font-size:.9rem;margin:0 0 1.6rem}
+.card{background:var(--panel);border:1px solid var(--line);padding:1.25rem;margin-bottom:1rem}
+.top-grid{display:grid;grid-template-columns:minmax(280px,360px) 1fr;gap:1rem;margin-bottom:1rem}
+.top-grid .card{margin-bottom:0}
+@media(max-width:760px){.top-grid{grid-template-columns:1fr}}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem}.field{margin-bottom:0}.field.full{grid-column:1/-1}
+label{display:block;color:var(--dim);font-size:.78rem;margin-bottom:.4rem}
+input,select{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);font:inherit;padding:.72rem .75rem;border-radius:0}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+button{background:var(--accent);color:#17120a;border:0;padding:.78rem 1rem;font-weight:700;cursor:pointer;font-size:.9rem}
+button.secondary{background:var(--panel2);color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.45;cursor:not-allowed}.actions{display:flex;gap:.7rem;margin-top:1rem}.actions button{flex:1}
+.legend{font: .72rem var(--mono);color:var(--accent);letter-spacing:.03em;margin-bottom:.8rem}
+.statusbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;font: .72rem var(--mono);color:var(--dim);margin-bottom:1rem}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-right:7px}.dot.ok{background:var(--green)}.dot.bad{background:var(--red)}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem}.metric{background:var(--panel2);border:1px solid var(--line);padding:.8rem}.metric .k{color:var(--dim);font-size:.7rem}.metric .v{font:1rem var(--mono);margin-top:.35rem}
+.section{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line)}
+.rows{display:grid;grid-template-columns:auto 1fr;gap:.55rem 1rem}.rows dt{font:.72rem var(--mono);color:var(--dim)}.rows dd{margin:0;font:.88rem var(--mono);text-align:right}
+.good{color:var(--green)!important}.warn{color:var(--red)!important}.accent{color:var(--accent)!important}.blue{color:var(--blue)!important}
+.signal{font:1.2rem var(--mono);font-weight:700;margin:.2rem 0 .8rem}.small{font-size:.75rem;color:var(--dim);line-height:1.5}
+.check{display:flex;gap:.7rem;align-items:flex-start;padding:.55rem 0;border-bottom:1px solid var(--line);font-size:.82rem}.check:last-child{border-bottom:0}.check input{width:auto;margin-top:.2rem}
+details summary{cursor:pointer;color:var(--dim);font-size:.8rem}.note{font-size:.72rem;color:var(--dim);line-height:1.5;margin-top:1.2rem}
+.error{color:var(--red);background:rgba(201,99,74,.08);border:1px solid rgba(201,99,74,.35);padding:.8rem;font-size:.8rem;line-height:1.45}
+.loading{color:var(--accent);font: .78rem var(--mono)}
+@media(max-width:560px){.grid,.metrics{grid-template-columns:1fr}.actions{flex-direction:column}.rows dd{text-align:left}}
+
+.watchbox{display:flex;align-items:center;gap:.6rem;font:.85rem var(--mono);padding:.7rem .85rem;background:var(--panel2);border:1px solid var(--line)}
+
+.chiplist{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.8rem}
+.chiplist:empty{display:none}
+.chip{display:inline-flex;align-items:center;gap:.5rem;background:var(--panel2);border:1px solid var(--line);padding:.35rem .5rem .35rem .7rem;font:.78rem var(--mono)}
+.chip button{background:none;border:0;color:var(--dim);cursor:pointer;padding:0 .2rem;font-size:.9rem;line-height:1}
+.chip button:hover{color:var(--red)}
+.watchlist{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1rem}
+.watchlist:empty::after{content:'Ajoute au moins un actif ci-dessus pour démarrer la surveillance.';color:var(--dim);font-size:.8rem}
+.watchlist .watchbox{width:100%}
+.watchlist .watchbox .symtag{font-weight:700;color:var(--ink);flex-shrink:0}
+.watchbox .dot{width:9px;height:9px;flex-shrink:0}
+.watchbox.idle .dot{background:var(--dim)}
+.watchbox.watching .dot{background:var(--accent);animation:pulse 1.4s ease-in-out infinite}
+.watchbox.triggered .dot{background:var(--green);animation:none}
+.watchbox.error .dot{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.alertcard{border-color:var(--green)!important}
+.alertcard .signal{font:1.2rem var(--mono);font-weight:700;color:var(--green);margin:.2rem 0 .8rem}
+
+.histrow{padding:.85rem 0;border-bottom:1px solid var(--line)}
+.histrow:last-child{border-bottom:0}
+.histhead{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;font:.85rem var(--mono)}
+
+.ladder{display:flex;flex-direction:column;border:1px solid var(--line)}
+.ladder-row{display:flex;align-items:center;gap:.7rem;padding:.6rem .85rem;border-bottom:1px solid var(--line);background:var(--panel2)}
+.ladder-row:last-child{border-bottom:0}
+.ladder-icon{font-size:.7rem;width:1rem;text-align:center;flex-shrink:0}
+.ladder-label{flex:1;font-size:.82rem;color:var(--dim)}
+.ladder-value{font:.9rem var(--mono);font-weight:600}
+.ladder-price{background:rgba(212,162,78,.08);border-top:1px solid var(--accent);border-bottom:1px solid var(--accent)}
+.ladder-price .ladder-label{color:var(--ink);font-weight:600}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+(function(){
+  const u=localStorage.getItem('td_kraken_worker_url');
+  if(u) $('krakenUrl').value=u;
+  $('krakenUrl').addEventListener('change',()=>localStorage.setItem('td_kraken_worker_url',$('krakenUrl').value.trim()));
+})();
+
+</script>
+</head>
+<body>
+<div class="wrap">
+<h1>Trade Discipline — V5.16</h1>
+<p class="subtitle">Tu donnes l'actif et ton risque en USD. L'app récupère le marché et prépare le setup.</p>
+
+<div class="top-grid">
+  <div class="card">
+  <div class="legend">SETUP</div>
+  <div class="grid">
+    <div class="field">
+      <label for="symbol">Actif</label>
+      <input id="symbol" value="BTC" placeholder="BTC">
+    </div>
+    <div class="field">
+      <label for="direction">Direction</label>
+      <select id="direction"><option value="AUTO">AUTO — selon RSI</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select>
+    </div>
+    <div class="field">
+      <label for="entry">Prix d'entrée envisagé (optionnel)</label>
+      <input id="entry" type="number" step="any" placeholder="laisser vide = prix actuel">
+    </div>
+    <div class="field">
+      <label for="risk">Risque max (USD)</label>
+      <input id="risk" type="number" step="any" min="0.01" value="50">
+    </div>
+    <div class="field">
+      <label for="atrMult">Stop = ATR 15min ×</label>
+      <input id="atrMult" type="number" step="0.1" min="0.1" value="1.5">
+    </div>
+    <div class="field">
+      <label for="volMult">Volume mini = moyenne ×</label>
+      <input id="volMult" type="number" step="0.1" min="1" value="1.3">
+    </div>
+    <div class="field">
+      <label for="timeoutH">Expiration signal (heures)</label>
+      <input id="timeoutH" type="number" step="1" min="1" value="24">
+    </div>
+    <div class="field">
+      <label for="minRR">R/R minimum pour le TP</label>
+      <input id="minRR" type="number" step="0.1" min="0.1" value="1">
+    </div>
+  </div>
+  <div class="actions">
+  <button id="analyze">Analyser le marché</button>
+  <button class="secondary" id="refresh" disabled>Actualiser</button>
+  </div>
+  </div>
+
+  <div id="output"><div class="card"><p class="small">Clique sur "Analyser le marché" pour voir le prix, le RSI et les niveaux support/résistance ici.</p></div></div>
+</div>
+
+<div class="card">
+<div class="legend">SURVEILLANCE CONTINUE</div>
+<p class="small" style="margin:0 0 1rem">Surveille le prix toutes les minutes, sur plusieurs actifs en parallèle. Le RSI 15min est recalculé uniquement à chaque nouvelle bougie 15min clôturée. RSI ≤ 32 → recherche LONG, attente du contact avec le support 15min. RSI ≥ 68 → recherche SHORT, attente du contact avec la résistance 15min. Le contact seul ne suffit pas : le volume de la bougie doit aussi dépasser le seuil réglé. Risque, ATR et volume (réglés ci-dessus) s'appliquent à tous les actifs surveillés. Aucun ordre n'est jamais passé automatiquement.</p>
+
+<div class="field" style="margin-bottom:.8rem">
+  <label for="watchSymbolInput">Ajouter un actif à la surveillance</label>
+  <div style="display:flex;gap:.5rem">
+    <input id="watchSymbolInput" placeholder="XRP">
+    <button class="secondary" id="watchAddSymbol" style="flex:0 0 auto;width:auto;padding:.72rem 1.1rem">Ajouter</button>
+  </div>
+</div>
+
+<div id="watchSymbolChips" class="chiplist"></div>
+<div id="watchStatusList" class="watchlist"></div>
+
+<div class="actions">
+  <button id="watchStart">Démarrer la surveillance</button>
+  <button class="secondary" id="watchStop" disabled>Arrêter</button>
+</div>
+<div id="watchMeta" class="small" style="margin-top:.7rem"></div>
+<div class="small" style="margin-top:.5rem">RSI : mise à jour uniquement après clôture d’une bougie 15min · Prix et contact support/résistance : vérifiés chaque minute.</div>
+</div>
+
+<div id="watchOutput"></div>
+
+<div class="card">
+<div class="legend">HISTORIQUE DES SIGNAUX</div>
+<p class="small" style="margin:0 0 1rem">Chaque signal détecté pendant la surveillance reste ici, même après avoir rechargé la page. Le statut (take-profit touché, stop touché, ou expiré sans résolution) se met à jour automatiquement tant que l'actif reste dans la liste de surveillance ci-dessus. Sert de base pour ton backtesting manuel.</p>
+<div id="historyList"></div>
+<div class="actions"><button class="secondary" id="exportXlsx">Exporter en Excel (.xlsx)</button><button class="secondary" id="historyClear">Vider l'historique</button></div>
+</div>
+
+<div class="card">
+<div class="legend">QUASI-SIGNAUX</div>
+<p class="small" style="margin:0 0 1rem">Chaque fois que le RSI entre dans une zone (≤32 ou ≥68), l'épisode est tracé ici — même si le prix ne touche jamais le niveau et qu'aucun signal n'est confirmé. Sert à voir ce que tu aurais pu manquer.</p>
+<div id="quasiList"></div>
+<div class="actions"><button class="secondary" id="quasiClear">Vider les quasi-signaux</button></div>
+</div>
+
+
+<p class="note">
+    Outil d'aide à la décision basé sur des règles que tu définis toi-même — pas un conseil financier.
+    Règles actuelles : RSI 15min ≤ 32 → LONG, entrée au support 15min, stop = ATR15 × multiplicateur ·
+    RSI 15min ≥ 68 → SHORT, entrée à la résistance 15min, stop = ATR15 × multiplicateur.
+    Take-profit : toujours la moyenne mobile (20/50/100/200 sur 15min) la plus proche du bon côté du prix. Le signal n'est confirmé que si le R/R obtenu avec cette MM atteint le minimum réglé (sinon la surveillance continue sans déclencher).
+    Un signal exige en plus un volume de la dernière bougie 15min supérieur au seuil réglé (× moyenne des 20 dernières bougies).
+    Le RSI 1h et la structure 1h ne sont pas utilisés pour le moment.
+  </p>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(n,d=4)=>Number(n).toLocaleString('fr-FR',{maximumFractionDigits:d});
+const pct=(n,d=2)=>(n*100).toLocaleString('fr-FR',{maximumFractionDigits:d})+'%';
+let state=null;
+renderHistory();
+renderQuasi();
+
+async function api(path){
+  const r=await fetch('https://api.binance.com'+path);
+  if(!r.ok) throw new Error('API Binance: HTTP '+r.status);
+  return r.json();
+}
+function closes(ks){return ks.map(k=>+k[4])}
+function rsiWilder(cs, period=14){
+  if(cs.length<=period) return null;
+  let gains=0,losses=0;
+  for(let i=1;i<=period;i++){let x=cs[i]-cs[i-1];if(x>=0)gains+=x;else losses-=x}
+  let ag=gains/period, al=losses/period;
+  for(let i=period+1;i<cs.length;i++){
+    let x=cs[i]-cs[i-1],g=Math.max(x,0),l=Math.max(-x,0);
+    ag=(ag*(period-1)+g)/period; al=(al*(period-1)+l)/period;
+  }
+  if(al===0)return 100;
+  return 100-100/(1+ag/al);
+}
+function sma(cs,period){
+  if(cs.length<period) return null;
+  const slice=cs.slice(-period);
+  return slice.reduce((a,b)=>a+b,0)/period;
+}
+function atr(ks,period=14){
+  if(ks.length<period+1)return null;
+  let trs=[];
+  for(let i=1;i<ks.length;i++){let h=+ks[i][2],l=+ks[i][3],pc=+ks[i-1][4];trs.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)))}
+  let a=trs.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  for(let i=period;i<trs.length;i++)a=(a*(period-1)+trs[i])/period;
+  return a;
+}
+function pivots(ks,left=2,right=2){
+  let lows=[], highs=[];
+  for(let i=left;i<ks.length-right;i++){
+    let lo=+ks[i][3],hi=+ks[i][2],isL=true,isH=true;
+    for(let j=i-left;j<=i+right;j++){if(j===i)continue;if(+ks[j][3]<=lo)isL=false;if(+ks[j][2]>=hi)isH=false}
+    if(isL)lows.push({p:lo,i}); if(isH)highs.push({p:hi,i});
+  }
+  return {lows,highs};
+}
+function nearestLevels(ks,price){
+  const p=pivots(ks), lookback=120;
+  const lows=p.lows.filter(x=>x.i>=Math.max(0,ks.length-lookback)).map(x=>x.p);
+  const highs=p.highs.filter(x=>x.i>=Math.max(0,ks.length-lookback)).map(x=>x.p);
+  const supports=[...new Set(lows.filter(x=>x<price).sort((a,b)=>b-a))];
+  const resistances=[...new Set(highs.filter(x=>x>price).sort((a,b)=>a-b))];
+  return {
+    support:supports[0]??Math.min(...ks.slice(-20).map(k=>+k[3])),
+    resistance:resistances[0]??Math.max(...ks.slice(-20).map(k=>+k[2])),
+    supports,      // triés du plus proche au plus éloigné
+    resistances,   // triés du plus proche au plus éloigné
+  };
+}
+// Prend la MM la plus proche du bon côté du prix (au-dessus pour un LONG, en dessous pour
+// un SHORT) — jamais une MM plus loin, même si le R/R serait meilleur. S'il n'y a aucune MM
+// du bon côté, il n'y a pas de cible valable.
+function pickTarget(dir,entry,mas){
+  const values=Object.entries(mas).filter(([,v])=>v!=null);
+  const candidates=values.filter(([,v])=>dir==='LONG'?v>entry:v<entry);
+  if(candidates.length===0) return null;
+  const sorted=candidates.sort((a,b)=>dir==='LONG'?a[1]-b[1]:b[1]-a[1]);
+  const [name,level]=sorted[0];
+  return {tp:level,source:name};
+}
+async function loadSymbol(sym){
+  const s=sym.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const symbol=s.endsWith('USDT')?s:s+'USDT';
+  const [ticker,k15,k1h]=await Promise.all([
+    api('/api/v3/ticker/price?symbol='+symbol),
+    api('/api/v3/klines?symbol='+symbol+'&interval=15m&limit=250'),
+    api('/api/v3/klines?symbol='+symbol+'&interval=1h&limit=250')
+  ]);
+  return {symbol,price:+ticker.price,k15,k1h};
+}
+function build(data){
+  const p=data.price, r15=rsiWilder(closes(data.k15)), r1h=rsiWilder(closes(data.k1h));
+  const sr15=nearestLevels(data.k15,p), sr1h=nearestLevels(data.k1h,p);
+  const atr15=atr(data.k15), atr1h=atr(data.k1h);
+  const c15=closes(data.k15);
+  const mas={SMA20:sma(c15,20),SMA50:sma(c15,50),SMA100:sma(c15,100),SMA200:sma(c15,200)};
+  // Volume is compared on the last CLOSED 15min candle, not the one still forming
+  // (an in-progress candle has had less time to accumulate volume, which would
+  // always look artificially low regardless of real market activity).
+  const closed15=data.k15.slice(0,-1);
+  const lastVol=+closed15[closed15.length-1][5];
+  const vol15=closed15.slice(-21,-1).reduce((a,k)=>a+(+k[5]),0)/20;
+  let dir=$('direction').value;
+  const auto=dir==='AUTO';
+  if(auto) dir=r15<32?'LONG':r15>68?'SHORT':'NONE';
+  const entryRaw=parseFloat($('entry').value);
+  const riskUsd=Math.max(.01,parseFloat($('risk').value)||50);
+  const atrMult=Math.max(.1,parseFloat($('atrMult').value)||1.5);
+  const volMult=Math.max(1,parseFloat($('volMult').value)||1.3);
+  const minRR=Math.max(.1,parseFloat($('minRR').value)||1);
+
+  // STRATEGY V5.14:
+  // LONG  = RSI <= 32, entry at support15, stop = ATR15 × atrMult below entry.
+  // SHORT = RSI >= 68, entry at resistance15, stop = ATR15 × atrMult above entry.
+  // TP = nearest MA (20/50/100/200) on the correct side of price — never a farther one.
+  // Signal requires last candle volume >= volMult × average, AND R/R (vs that nearest MA) >= minRR.
+  const volumeOk=lastVol>=volMult*vol15;
+  const plannedEntry=dir==='LONG'?sr15.support:dir==='SHORT'?sr15.resistance:null;
+  // Optional manual entry is kept as a reference, but does not replace the strategy entry level.
+  const entry=plannedEntry;
+  const stopDistance=atr15*atrMult;
+  const stop=dir==='LONG'?entry-stopDistance:dir==='SHORT'?entry+stopDistance:null;
+  const target=dir!=='NONE'?pickTarget(dir,entry,mas):null;
+  const tp=target?target.tp:null;
+  const tpSource=target?target.source:null;
+  const entryReference=Number.isFinite(entryRaw)&&entryRaw>0?entryRaw:null;
+  const riskPerUnit=stop?Math.abs(entry-stop):null;
+  const qty=riskPerUnit?riskUsd/riskPerUnit:null;
+  const rr=(tp&&riskPerUnit)?Math.abs(tp-entry)/riskPerUnit:null;
+  const rrOk=rr!=null&&rr>=minRR;
+  const momentum=((dir==='LONG'&&r15<=32)||(dir==='SHORT'&&r15>=68))&&volumeOk&&rrOk;
+  const atrPct15=atr15/p, atrPct1h=atr1h/p;
+  return {data,r15,r1h,sr15,sr1h,mas,atr15,atr1h,vol15,lastVol,dir,auto,entry,entryReference,riskUsd,momentum,stop,tp,tpSource,riskPerUnit,qty,rr,rrOk,minRR,atrPct15,atrPct1h,volumeOk,atrMult,volMult,stopDistance};
+}
+function buildLevelLadder(s){
+  const items=[
+    {label:'Résistance 1h',value:s.sr1h.resistance,type:'resistance'},
+    {label:'Résistance 15min',value:s.sr15.resistance,type:'resistance'},
+    {label:'Cours actuel',value:s.data.price,type:'price'},
+    {label:'Support 15min',value:s.sr15.support,type:'support'},
+    {label:'Support 1h',value:s.sr1h.support,type:'support'},
+  ].sort((a,b)=>b.value-a.value);
+
+  return items.map(it=>{
+    const icon=it.type==='resistance'?'▲':it.type==='support'?'▼':'●';
+    const cls=it.type==='resistance'?'warn':it.type==='support'?'good':'accent';
+    const rowCls=it.type==='price'?'ladder-row ladder-price':'ladder-row';
+    return `<div class="${rowCls}">
+      <span class="ladder-icon ${cls}">${icon}</span>
+      <span class="ladder-label">${it.label}</span>
+      <span class="ladder-value ${cls}">${fmt(it.value)}</span>
+    </div>`;
+  }).join('');
+}
+
+function render(s){
+  const signal=s.dir==='NONE'?'ATTENTE':(s.momentum?'ORDRE POTENTIEL':'ATTENTE');
+  const signalClass=signal==='ORDRE POTENTIEL'?'good':signal==='ATTENTE'?'warn':'';
+  const volumeRatio=s.lastVol/s.vol15;
+  const rrLabel=s.rr==null?'—':s.rr<1?'faible':s.rr<1.5?'à surveiller':'favorable';
+  $('output').innerHTML=`
+  <div class="card">
+    <div class="statusbar"><span><span class="dot ok"></span>${s.data.symbol}</span><span>mis à jour ${new Date().toLocaleTimeString('fr-FR')}</span></div>
+    <div class="metrics">
+      <div class="metric"><div class="k">PRIX ACTUEL</div><div class="v">${fmt(s.data.price)}</div></div>
+      <div class="metric"><div class="k">RSI 15 MIN</div><div class="v ${s.r15<32?'good':s.r15>68?'warn':''}">${fmt(s.r15,2)}</div></div>
+      <div class="metric"><div class="k">RSI 1 H</div><div class="v">${fmt(s.r1h,2)}</div></div>
+    </div>
+    <div class="section">
+      <div class="legend">NIVEAUX AUTOMATIQUES</div>
+      <div class="ladder">
+        ${buildLevelLadder(s)}
+      </div>
+    </div>
+    <div class="section">
+      <div class="legend">VOLATILITÉ / VOLUME</div>
+      <div class="rows">
+        <dt>ATR 15min</dt><dd>${fmt(s.atr15)} (${pct(s.atrPct15)})</dd>
+        <dt>ATR 1h</dt><dd>${fmt(s.atr1h)} (${pct(s.atrPct1h)})</dd>
+        <dt>Volume 15min vs moyenne 20</dt><dd class="${s.volumeOk?'good':'warn'}">${fmt(volumeRatio,2)}× ${s.volumeOk?'✓ confirmé':'✕ insuffisant (seuil '+fmt(s.volMult,1)+'×)'}</dd>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="legend">DÉCISION</div>
+    <div class="signal ${signalClass}">${signal}</div>
+  </div>
+
+  ${s.dir!=='NONE'?`<div class="card">
+    <div class="legend">ORDRE PRÉPARÉ</div>
+    ${s.tp===null?`
+    <p class="small">Aucune moyenne mobile (20/50/100/200) du bon côté du prix pour servir de take-profit — pas d'ordre proposé pour l'instant.</p>
+    `:`
+    <div class="rows">
+      <dt>Direction</dt><dd class="accent">${s.dir}</dd>
+      <dt>Entrée</dt><dd>${fmt(s.entry)}</dd>
+      ${s.entryReference!==null?`<dt>Prix envisagé</dt><dd>${fmt(s.entryReference)}</dd>`:''}
+      <dt>Stop-loss (ATR×${fmt(s.atrMult,1)})</dt><dd>${fmt(s.stop)}</dd>
+      <dt>Take-profit</dt><dd>${fmt(s.tp)} <span class="small">(${s.tpSource})</span></dd>
+      <dt>Risque max</dt><dd>${fmt(s.riskUsd,2)} USD</dd>
+      <dt>Distance au stop</dt><dd>${pct(s.riskPerUnit/s.entry)}</dd>
+      <dt>Quantité</dt><dd class="accent">${fmt(s.qty,6)}</dd>
+      <dt>Notionnel</dt><dd class="accent">${fmt(s.qty*s.entry,2)} USDT</dd>
+      <dt>R/R</dt><dd class="${s.rrOk?'good':'warn'}">${fmt(s.rr,2)} — ${rrLabel}${s.rrOk?'':' (minimum '+fmt(s.minRR,1)+' requis)'}</dd>
+    </div>
+    <div class="section">
+      <div class="small"><b>Important :</b> le calcul de taille vise à limiter la perte au montant indiqué si le stop est exécuté. Frais, slippage, funding, taille minimale et règles de l'exchange ne sont pas encore inclus.</div>
+    </div>
+    `}
+  </div>`:''}`;
+}
+$('analyze').onclick=async()=>{
+  const out=$('output'); const sym=$('symbol').value.trim();
+  if(!sym){out.innerHTML='<div class="error">Entre un actif, par exemple BTC.</div>';return}
+  $('analyze').disabled=true;$('refresh').disabled=true;
+  out.innerHTML='<div class="card loading">Récupération des données marché…</div>';
+  try{const d=await loadSymbol(sym);state=build(d);render(state);$('refresh').disabled=false}
+  catch(e){out.innerHTML='<div class="error"><b>Impossible de récupérer les données.</b><br>'+e.message+'<br><br>Vérifie le symbole (BTC, ETH, SOL…) et ta connexion internet. Cette V5 utilise l’API publique Binance depuis ton navigateur.</div>'}
+  finally{$('analyze').disabled=false}
+};
+$('refresh').onclick=async()=>{$('analyze').click()};
+$('symbol').addEventListener('keydown',e=>{if(e.key==='Enter')$('analyze').click()});
+
+// ---------- SURVEILLANCE CONTINUE (multi-actifs) ----------
+const POLL_MS=60000;
+let watchSymbols=[]; // ex: ['BTC','XRP']
+let watchStates={};  // sym -> {state,lastClosed15m,r15}
+let watchTimer=null;
+let watchRunning=false;
+let watchFirstCheckAt=null;
+let watchNextAt=null;
+
+function normSymbol(raw){
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/USDT$/,'');
+}
+
+function notify(title,body){
+  try{
+    if('Notification' in window && Notification.permission==='granted'){
+      new Notification(title,{body});
+    }
+  }catch(e){}
+}
+
+function renderSymbolChips(){
+  $('watchSymbolChips').innerHTML=watchSymbols.map(sym=>
+    `<span class="chip">${sym}<button data-sym="${sym}" class="chipRemove" title="Retirer">✕</button></span>`
+  ).join('');
+  $('watchSymbolChips').querySelectorAll('.chipRemove').forEach(btn=>{
+    btn.onclick=()=>removeWatchSymbol(btn.dataset.sym);
+  });
+}
+
+function renderSymbolRow(sym){
+  const st=watchStates[sym];
+  let row=document.getElementById('watchrow-'+sym);
+  if(!row){
+    row=document.createElement('div');
+    row.id='watchrow-'+sym;
+    row.className='watchbox idle';
+    row.innerHTML='<span class="dot"></span><span class="symtag">'+sym+'</span><span class="rowlabel"></span>';
+    $('watchStatusList').appendChild(row);
+  }
+  row.className='watchbox '+(st?st.mode:'idle');
+  row.querySelector('.rowlabel').textContent=st?st.label:'En attente de démarrage…';
+}
+
+function addWatchSymbol(raw){
+  const sym=normSymbol(raw);
+  if(!sym) return;
+  if(watchSymbols.includes(sym)){ $('watchSymbolInput').value=''; return; }
+  watchSymbols.push(sym);
+  watchStates[sym]={state:'idle',lastClosed15m:null,r15:null,mode:'idle',label:watchRunning?'Vérification en cours…':'En attente de démarrage…'};
+  renderSymbolChips();
+  renderSymbolRow(sym);
+  $('watchSymbolInput').value='';
+  if(watchRunning) watchTickSymbol(sym); // récupère l'état tout de suite pour un actif ajouté en cours de route
+}
+
+function removeWatchSymbol(sym){
+  watchSymbols=watchSymbols.filter(s=>s!==sym);
+  delete watchStates[sym];
+  const row=document.getElementById('watchrow-'+sym);
+  if(row) row.remove();
+  renderSymbolChips();
+}
+
+$('watchAddSymbol').onclick=()=>addWatchSymbol($('watchSymbolInput').value);
+$('watchSymbolInput').addEventListener('keydown',e=>{if(e.key==='Enter')addWatchSymbol($('watchSymbolInput').value)});
+
+function renderWatchMeta(errorMsg){
+  const now=new Date().toLocaleTimeString('fr-FR');
+  const next=watchNextAt?watchNextAt.toLocaleTimeString('fr-FR'):'—';
+  const first=watchFirstCheckAt?watchFirstCheckAt.toLocaleTimeString('fr-FR'):'—';
+  $('watchMeta').innerHTML = errorMsg
+    ? '⚠️ '+errorMsg+' — nouvelle tentative à '+next
+    : 'Première vérification : '+first+' · Dernière vérification : '+now+' · prochaine : '+next;
+}
+
+function orderSnapshot(dir,data,r15,sr15,mas,riskUsd,stopDistance){
+  const entry=dir==='LONG'?sr15.support:sr15.resistance;
+  const stop=dir==='LONG'?entry-stopDistance:entry+stopDistance;
+  const target=pickTarget(dir,entry,mas);
+  if(!target) return null; // pas de MM du bon côté -> pas de cible valable
+  const tp=target.tp;
+  const tpSource=target.source;
+  const riskPerUnit=Math.abs(entry-stop);
+  const qty=riskUsd/riskPerUnit;
+  const rr=Math.abs(tp-entry)/riskPerUnit;
+  return {dir,symbol:data.symbol,price:data.price,r15,entry,stop,tp,tpSource,riskUsd,riskPerUnit,qty,rr,ts:Date.now()};
+}
+
+// ---------- HISTORIQUE (persisté dans localStorage) ----------
+const HISTORY_KEY='td_v4_history';
+const HISTORY_MAX=200;
+
+function loadHistory(){
+  try{ return JSON.parse(localStorage.getItem(HISTORY_KEY))||[]; }
+  catch(e){ return []; }
+}
+function saveHistory(list){
+  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0,HISTORY_MAX))); }
+  catch(e){}
+}
+function addToHistory(snap){
+  snap.outcome='open';
+  snap.resolvedAt=null;
+  snap.resolvedPrice=null;
+  const list=loadHistory();
+  list.unshift(snap);
+  saveHistory(list);
+  renderHistory();
+}
+
+// Vérifie les signaux encore "ouverts" pour ce symbole contre la fourchette de la bougie en cours,
+// et les fait expirer si le délai réglé est dépassé sans TP ni SL touché.
+function checkOpenTrades(symClean,data,highNow,lowNow,timeoutH){
+  const list=loadHistory();
+  let changed=false;
+  list.forEach(e=>{
+    if(e.outcome!=='open' || e.symbol!==symClean) return;
+    const id=e.ts+'-'+e.symbol;
+    if(e.dir==='LONG'){
+      if(lowNow<=e.stop){ e.outcome='sl_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.stop; changed=true; return; }
+      if(highNow>=e.tp){ e.outcome='tp_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.tp; changed=true; return; }
+    }else{
+      if(highNow>=e.stop){ e.outcome='sl_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.stop; changed=true; return; }
+      if(lowNow<=e.tp){ e.outcome='tp_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.tp; changed=true; return; }
+    }
+    if(Date.now()-e.ts>=timeoutH*3600000){
+      e.outcome='timeout'; e.resolvedAt=Date.now(); e.resolvedPrice=data.price; changed=true;
+    }
+  });
+  if(changed){ saveHistory(list); renderHistory(); }
+}
+
+function renderHistory(){
+  const list=loadHistory();
+  const container=$('historyList');
+  if(list.length===0){
+    container.innerHTML='<p class="small">Aucun signal enregistré pour l\'instant.</p>';
+    return;
+  }
+  container.innerHTML=list.map(snap=>{
+    const rrLabel=snap.rr<1?'faible':snap.rr<1.5?'à surveiller':'favorable';
+    const dt=new Date(snap.ts);
+    const dateStr=dt.toLocaleDateString('fr-FR')+' '+dt.toLocaleTimeString('fr-FR');
+    const outcome=snap.outcome||'open';
+    const outcomeLabel={open:'⏳ en cours',tp_hit:'✓ take-profit touché',sl_hit:'✕ stop-loss touché',timeout:'— expiré sans résolution'}[outcome];
+    const outcomeClass={open:'accent',tp_hit:'good',sl_hit:'warn',timeout:''}[outcome];
+    const resolvedRow=snap.resolvedAt
+      ? `<dt>Résolu le</dt><dd>${new Date(snap.resolvedAt).toLocaleDateString('fr-FR')} ${new Date(snap.resolvedAt).toLocaleTimeString('fr-FR')}</dd><dt>Prix de résolution</dt><dd>${fmt(snap.resolvedPrice)}</dd>`
+      : '';
+    return `<div class="histrow">
+      <div class="histhead">
+        <span class="accent">${snap.dir}</span>
+        <span class="small">${snap.symbol}</span>
+        <span class="small" style="margin-left:auto">${dateStr}</span>
+      </div>
+      <div class="rows">
+        <dt>Statut</dt><dd class="${outcomeClass}">${outcomeLabel}</dd>
+        <dt>RSI au déclenchement</dt><dd>${fmt(snap.r15,2)}</dd>
+        <dt>Entrée</dt><dd>${fmt(snap.entry)}</dd>
+        <dt>Stop-loss</dt><dd>${fmt(snap.stop)}</dd>
+        <dt>Take-profit</dt><dd>${fmt(snap.tp)} <span class="small">(${snap.tpSource||'—'})</span></dd>
+        <dt>R/R visé</dt><dd class="${snap.rr>=1.5?'good':snap.rr>=1?'accent':'warn'}">${fmt(snap.rr,2)} — ${rrLabel}</dd>
+        ${resolvedRow}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function outcomeLabelFr(outcome){
+  return {open:'en cours',tp_hit:'take-profit touché',sl_hit:'stop-loss touché',timeout:'expiré sans résolution'}[outcome]||outcome;
+}
+
+$('exportXlsx').onclick=()=>{
+  if(typeof XLSX==='undefined'){
+    alert('La librairie d\'export (XLSX) n\'a pas pu se charger — vérifie ta connexion internet et réessaie.');
+    return;
+  }
+
+  const history=loadHistory().map(s=>({
+    'Date':new Date(s.ts).toLocaleString('fr-FR'),
+    'Actif':s.symbol,
+    'Direction':s.dir,
+    'RSI au déclenchement':s.r15,
+    'Entrée':s.entry,
+    'Stop-loss':s.stop,
+    'Take-profit':s.tp,
+    'Source du TP':s.tpSource||'',
+    'R/R visé':s.rr,
+    'Quantité':s.qty,
+    'Risque (USD)':s.riskUsd,
+    'Statut':outcomeLabelFr(s.outcome||'open'),
+    'Date de résolution':s.resolvedAt?new Date(s.resolvedAt).toLocaleString('fr-FR'):'',
+    'Prix de résolution':s.resolvedPrice||'',
+  }));
+
+  const quasi=loadQuasi().map(e=>({
+    'Date d\'entrée en zone':new Date(e.enteredAt).toLocaleString('fr-FR'),
+    'Actif':e.symbol,
+    'Direction':e.dir,
+    'RSI à l\'entrée':e.r15Entered,
+    'Niveau d\'entrée visé':e.level,
+    'Prix à l\'entrée':e.priceEntered,
+    'Statut':e.status==='watching'?'en cours':e.status==='triggered'?'signal confirmé':'manqué',
+    'RSI à la sortie':e.r15Exit||'',
+    'Prix à la sortie':e.priceExit||'',
+    'Date de résolution':e.resolvedAt?new Date(e.resolvedAt).toLocaleString('fr-FR'):'',
+  }));
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(history),'Signaux');
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(quasi),'Quasi-signaux');
+
+  const stamp=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  XLSX.writeFile(wb,'trade-discipline-signaux-'+stamp+'.xlsx');
+};
+
+$('historyClear').onclick=()=>{
+  if(!confirm('Vider tout l\'historique des signaux ?')) return;
+  saveHistory([]);
+  renderHistory();
+};
+
+// ---------- QUASI-SIGNAUX (RSI en zone, sans contact confirmé — persisté aussi) ----------
+const QUASI_KEY='td_v4_quasi';
+const QUASI_MAX=300;
+
+function loadQuasi(){
+  try{ return JSON.parse(localStorage.getItem(QUASI_KEY))||[]; }
+  catch(e){ return []; }
+}
+function saveQuasi(list){
+  try{ localStorage.setItem(QUASI_KEY, JSON.stringify(list.slice(0,QUASI_MAX))); }
+  catch(e){}
+}
+
+function openQuasi(st,data,dir,r15,level){
+  const list=loadQuasi();
+  const entry={
+    id:Date.now()+'-'+data.symbol,
+    symbol:data.symbol.replace('USDT',''),
+    dir,
+    level,
+    enteredAt:Date.now(),
+    r15Entered:r15,
+    priceEntered:data.price,
+    status:'watching',
+    resolvedAt:null,
+    r15Exit:null,
+    priceExit:null,
+    // live tracking, updated on every tick while status==='watching'
+    priceNow:data.price,
+    r15Now:r15,
+    distancePct:null,
+    volRatio:null,
+    volMult:null,
+    volumeOk:null,
+    touched:false,
+    updatedAt:Date.now(),
+  };
+  list.unshift(entry);
+  saveQuasi(list);
+  st.quasiId=entry.id;
+  renderQuasi();
+}
+
+function updateQuasiLive(st,data,r15,volRatio,volMult,volumeOk,touched){
+  if(!st.quasiId) return;
+  const list=loadQuasi();
+  const entry=list.find(e=>e.id===st.quasiId);
+  if(!entry) return;
+  entry.priceNow=data.price;
+  entry.r15Now=r15;
+  entry.distancePct=entry.dir==='LONG'
+    ? (data.price-entry.level)/entry.level   // positif = prix encore au-dessus du support (pas encore touché)
+    : (entry.level-data.price)/entry.level;  // positif = prix encore en dessous de la résistance
+  entry.volRatio=volRatio;
+  entry.volMult=volMult;
+  entry.volumeOk=volumeOk;
+  entry.touched=touched;
+  entry.updatedAt=Date.now();
+  saveQuasi(list);
+  renderQuasi();
+}
+
+function closeQuasi(st,status,r15,price){
+  if(!st.quasiId) return;
+  const list=loadQuasi();
+  const entry=list.find(e=>e.id===st.quasiId);
+  if(entry){
+    entry.status=status;
+    entry.resolvedAt=Date.now();
+    entry.r15Exit=r15;
+    entry.priceExit=price;
+    saveQuasi(list);
+    renderQuasi();
+  }
+  st.quasiId=null;
+}
+
+function renderQuasi(){
+  const container=document.getElementById('quasiList');
+  if(!container) return;
+  const list=loadQuasi();
+  if(list.length===0){
+    container.innerHTML='<p class="small">Aucun épisode enregistré pour l\'instant.</p>';
+    return;
+  }
+  container.innerHTML=list.map(e=>{
+    const dt=new Date(e.enteredAt);
+    const dateStr=dt.toLocaleDateString('fr-FR')+' '+dt.toLocaleTimeString('fr-FR');
+    const statusLabel=e.status==='watching'?'en cours':e.status==='triggered'?'✓ signal confirmé':'✕ manqué (RSI ressorti sans contact)';
+    const statusClass=e.status==='watching'?'accent':e.status==='triggered'?'good':'warn';
+    const duration=e.resolvedAt?Math.round((e.resolvedAt-e.enteredAt)/60000)+' min':'—';
+
+    let liveRows='';
+    if(e.status==='watching' && e.distancePct!==null && e.distancePct!==undefined){
+      const distLabel=e.touched
+        ? 'niveau atteint'
+        : (e.distancePct*100).toFixed(2)+'% avant contact';
+      const volLabel=e.volumeOk
+        ? '✓ confirmé ('+fmt(e.volRatio,2)+'×)'
+        : '✕ insuffisant ('+fmt(e.volRatio,2)+'× — seuil '+fmt(e.volMult,1)+'×)';
+      const missing=[];
+      if(!e.touched) missing.push('contact avec le niveau');
+      if(!e.volumeOk) missing.push('volume suffisant');
+      liveRows=`
+        <dt>Cours actuel</dt><dd>${fmt(e.priceNow)}</dd>
+        <dt>Distance au niveau</dt><dd class="${e.touched?'good':'accent'}">${distLabel}</dd>
+        <dt>Volume actuel</dt><dd class="${e.volumeOk?'good':'warn'}">${volLabel}</dd>
+        <dt>Il manque</dt><dd class="${missing.length?'warn':'good'}">${missing.length?missing.join(' + '):'rien — signal imminent'}</dd>`;
+    }
+
+    return `<div class="histrow">
+      <div class="histhead">
+        <span class="accent">${e.dir}</span>
+        <span class="small">${e.symbol}</span>
+        <span class="small" style="margin-left:auto">${dateStr}</span>
+      </div>
+      <div class="rows">
+        <dt>Statut</dt><dd class="${statusClass}">${statusLabel}</dd>
+        <dt>RSI à l'entrée en zone</dt><dd>${fmt(e.r15Entered,2)}</dd>
+        <dt>Niveau d'entrée visé (${e.dir==='LONG'?'support':'résistance'} 15min)</dt><dd>${fmt(e.level)}</dd>
+        <dt>Prix à l'entrée en zone</dt><dd>${fmt(e.priceEntered)}</dd>
+        ${liveRows}
+        ${e.resolvedAt?`<dt>RSI à la sortie</dt><dd>${fmt(e.r15Exit,2)}</dd><dt>Prix à la sortie</dt><dd>${fmt(e.priceExit)}</dd><dt>Durée</dt><dd>${duration}</dd>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+document.getElementById('quasiClear')?.addEventListener('click',()=>{
+  if(!confirm('Vider tout l\'historique des quasi-signaux ?')) return;
+  saveQuasi([]);
+  renderQuasi();
+});
+
+async function watchTickSymbol(sym){
+  const st=watchStates[sym];
+  if(!st) return;
+  const riskUsd=Math.max(.01,parseFloat($('risk').value)||50);
+  const atrMult=Math.max(.1,parseFloat($('atrMult').value)||1.5);
+  const volMult=Math.max(1,parseFloat($('volMult').value)||1.3);
+  const minRR=Math.max(.1,parseFloat($('minRR').value)||1);
+
+  try{
+    const data=await loadSymbol(sym);
+
+    // The last kline is the currently-forming candle.
+    // RSI is recalculated only when a NEW closed 15m candle appears.
+    const closed=data.k15[data.k15.length-2];
+    const closedOpenTime=closed[0];
+
+    if(st.lastClosed15m!==closedOpenTime){
+      st.lastClosed15m=closedOpenTime;
+      st.r15=rsiWilder(closes(data.k15.slice(0,-1)));
+    }
+
+    const r15=st.r15;
+    const sr15=nearestLevels(data.k15,data.price);
+    const c15=closes(data.k15);
+    const mas={SMA20:sma(c15,20),SMA50:sma(c15,50),SMA100:sma(c15,100),SMA200:sma(c15,200)};
+    const atr15=atr(data.k15);
+    const stopDistance=atr15*atrMult;
+    // Same fix as RSI: compare volume on the last CLOSED candle, not the forming one.
+    const closed15=data.k15.slice(0,-1);
+    const lastVol=+closed15[closed15.length-1][5];
+    const vol15=closed15.slice(-21,-1).reduce((a,k)=>a+(+k[5]),0)/20;
+    const volumeOk=lastVol>=volMult*vol15;
+    const longActive=r15<=32;
+    const shortActive=r15>=68;
+    const volRatio=lastVol/vol15;
+
+    // The forming candle's high/low (updated continuously by Binance, even before it closes)
+    // capture the full range reached since it opened — unlike a single polled price, which can
+    // miss a level that was touched and already reversed away from between two 60s checks.
+    const forming=data.k15[data.k15.length-1];
+    const highNow=+forming[2];
+    const lowNow=+forming[3];
+    const touchLong=lowNow<=sr15.support;
+    const touchShort=highNow>=sr15.resistance;
+
+    const timeoutH=Math.max(1,parseFloat($('timeoutH').value)||24);
+    checkOpenTrades(data.symbol.replace('USDT',''),data,highNow,lowNow,timeoutH);
+
+    if(st.state==='watching_long'){
+      updateQuasiLive(st,data,r15,volRatio,volMult,volumeOk,touchLong);
+    }else if(st.state==='watching_short'){
+      updateQuasiLive(st,data,r15,volRatio,volMult,volumeOk,touchShort);
+    }
+
+    if(st.state==='watching_long'){
+      if(!longActive){
+        closeQuasi(st,'missed',r15,data.price);
+        st.state='idle';
+      }else if(touchLong && volumeOk){
+        const snap=orderSnapshot('LONG',data,r15,sr15,mas,riskUsd,stopDistance);
+        if(snap && snap.rr>=minRR){
+          notify('LONG — conditions réunies ('+data.symbol+')',
+            'RSI clôturé '+fmt(r15,2)+' · Entrée '+fmt(snap.entry)+' · SL '+fmt(snap.stop)+' · TP '+fmt(snap.tp)+' ('+snap.tpSource+')');
+          addToHistory(snap);
+          closeQuasi(st,'triggered',r15,data.price);
+          st.state='cooldown_long';
+        }
+        // sinon: contact + volume OK mais R/R insuffisant (ou pas de MM du bon côté) -> on continue à surveiller
+      }
+    }else if(st.state==='watching_short'){
+      if(!shortActive){
+        closeQuasi(st,'missed',r15,data.price);
+        st.state='idle';
+      }else if(touchShort && volumeOk){
+        const snap=orderSnapshot('SHORT',data,r15,sr15,mas,riskUsd,stopDistance);
+        if(snap && snap.rr>=minRR){
+          notify('SHORT — conditions réunies ('+data.symbol+')',
+            'RSI clôturé '+fmt(r15,2)+' · Entrée '+fmt(snap.entry)+' · SL '+fmt(snap.stop)+' · TP '+fmt(snap.tp)+' ('+snap.tpSource+')');
+          addToHistory(snap);
+          closeQuasi(st,'triggered',r15,data.price);
+          st.state='cooldown_short';
+        }
+      }
+    }else if(st.state==='cooldown_long'){
+      if(!longActive) st.state='idle';
+    }else if(st.state==='cooldown_short'){
+      if(!shortActive) st.state='idle';
+    }
+
+    if(st.state==='idle'){
+      if(longActive){ st.state='watching_long'; openQuasi(st,data,'LONG',r15,sr15.support); }
+      else if(shortActive){ st.state='watching_short'; openQuasi(st,data,'SHORT',r15,sr15.resistance); }
+    }
+
+    function blockReason(dir,touch,entry){
+      if(!touch) return '';
+      const reasons=[];
+      if(!volumeOk) reasons.push('volume insuffisant ('+fmt(volRatio,2)+'×, seuil '+fmt(volMult,1)+'×)');
+      const preview=pickTarget(dir,entry,mas);
+      if(!preview) reasons.push('aucune MM du bon côté');
+      else{
+        const previewRR=Math.abs(preview.tp-entry)/stopDistance;
+        if(previewRR<minRR) reasons.push('R/R insuffisant ('+fmt(previewRR,2)+' vs '+fmt(minRR,1)+' visé sur '+preview.source+')');
+      }
+      return reasons.length?' · niveau atteint, '+reasons.join(', '):'';
+    }
+
+    if(st.state==='watching_long'){
+      st.mode='watching';
+      st.label='Recherche LONG — RSI clôturé '+fmt(r15,2)+' ≤ 32 · support 15min : '+fmt(sr15.support)+
+        ' · cours : '+fmt(data.price)+blockReason('LONG',touchLong,sr15.support);
+    }else if(st.state==='watching_short'){
+      st.mode='watching';
+      st.label='Recherche SHORT — RSI clôturé '+fmt(r15,2)+' ≥ 68 · résistance 15min : '+fmt(sr15.resistance)+
+        ' · cours : '+fmt(data.price)+blockReason('SHORT',touchShort,sr15.resistance);
+    }else if(st.state==='cooldown_long'){
+      st.mode='triggered';
+      st.label='✓ LONG signalé — attente d’une sortie du RSI de la zone ≤ 32 · RSI clôturé : '+fmt(r15,2);
+    }else if(st.state==='cooldown_short'){
+      st.mode='triggered';
+      st.label='✓ SHORT signalé — attente d’une sortie du RSI de la zone ≥ 68 · RSI clôturé : '+fmt(r15,2);
+    }else{
+      st.mode='idle';
+      st.label='RSI clôturé '+fmt(r15,2)+', aucune condition en cours';
+    }
+    renderSymbolRow(sym);
+  }catch(e){
+    st.mode='error';
+    st.label='⚠️ '+e.message;
+    renderSymbolRow(sym);
+  }
+}
+
+async function watchTickAll(){
+  await Promise.allSettled(watchSymbols.map(sym=>watchTickSymbol(sym)));
+  watchNextAt=new Date(Date.now()+POLL_MS);
+  renderWatchMeta();
+}
+
+$('watchStart').onclick=async()=>{
+  if(watchSymbols.length===0){
+    $('watchMeta').innerHTML='<span class="warn">Ajoute au moins un actif avant de démarrer.</span>';
+    return;
+  }
+
+  watchRunning=true;
+  watchFirstCheckAt=new Date();
+  watchSymbols.forEach(sym=>{
+    watchStates[sym]={state:'idle',lastClosed15m:null,r15:null,mode:'watching',label:'Vérification en cours…'};
+    renderSymbolRow(sym);
+  });
+
+  $('watchStart').disabled=true;
+  $('watchStop').disabled=false;
+  $('watchAddSymbol').disabled=false; // ajouter un actif reste possible en cours de route
+  $('watchMeta').textContent='';
+
+  try{
+    if('Notification' in window && Notification.permission==='default'){
+      try{ await Notification.requestPermission(); }catch(e){}
+    }
+    await watchTickAll();
+    watchTimer=setInterval(watchTickAll,POLL_MS);
+  }catch(err){
+    $('watchMeta').innerHTML='<span class="warn">Erreur au démarrage : '+err.message+'</span>';
+    watchRunning=false;
+    $('watchStart').disabled=false;
+    $('watchStop').disabled=true;
+  }
+};
+
+$('watchStop').onclick=()=>{
+  clearInterval(watchTimer);
+  watchTimer=null;
+  watchRunning=false;
+  watchFirstCheckAt=null;
+  watchNextAt=null;
+  watchSymbols.forEach(sym=>{
+    watchStates[sym].mode='idle';
+    watchStates[sym].label='Surveillance arrêtée';
+    renderSymbolRow(sym);
+  });
+  $('watchStart').disabled=false;
+  $('watchStop').disabled=true;
+  $('watchMeta').innerHTML='';
+};
+
+// Actif par défaut pour démarrer plus vite
+addWatchSymbol('BTC');
+
+
+
+function setKrakenStatus(mode,text){
+  const box=$('krakenStatus');
+  box.className='watchbox '+mode;
+  $('krakenStatusLabel').textContent=text;
+}
+
+// ---------- KRAKEN REMOTE CONNECTOR ----------
+function krakenConnectorBase(){
+  return ($('krakenUrl').value||'').trim().replace(/\/+$/,'');
+}
+function krakenClientHeaders(){
+  const token=($('krakenToken').value||'').trim();
+  return token ? {'X-Trade-Token':token} : {};
+}
+async function krakenRemote(path){
+  const base=krakenConnectorBase();
+  if(!base) throw new Error('Renseigne l’URL du connecteur Cloudflare.');
+  const r=await fetch(base+path,{cache:'no-store',headers:krakenClientHeaders()});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error||('HTTP '+r.status));
+  return data;
+}
+$('krakenConnect').onclick=async()=>{
+  $('krakenOutput').textContent='Test en cours…';
+  setKrakenStatus('watching','Connexion…');
+  try{
+    const data=await krakenRemote('/status');
+    setKrakenStatus('triggered','✓ Connecteur actif');
+    $('krakenOutput').textContent=(data.message||'Connexion OK')+' — '+new Date().toLocaleTimeString('fr-FR');
+  }catch(e){
+    setKrakenStatus('error','Connexion impossible');
+    $('krakenOutput').innerHTML='⚠️ '+e.message;
+  }
+};
+$('krakenBalance').onclick=async()=>{
+  $('krakenOutput').textContent='Lecture du compte…';
+  try{
+    const data=await krakenRemote('/balance');
+    const entries=Object.entries(data.result||{});
+    $('krakenOutput').innerHTML=entries.length
+      ? '<b>Solde Kraken :</b><br>'+entries.map(([k,v])=>`${k} : ${v}`).join('<br>')
+      : 'Connexion réussie, aucun solde retourné.';
+    setKrakenStatus('triggered','✓ Compte Kraken accessible');
+  }catch(e){
+    setKrakenStatus('error','Lecture du compte impossible');
+    $('krakenOutput').textContent='⚠️ '+e.message;
+  }
+};
+</script>
+
+<div style="max-width:1040px;margin:0 auto;padding:0 1.25rem 2rem;color:var(--dim);font-size:.72rem;line-height:1.5">
+  Prototype : le risque est saisi en USD. Le prix Binance étant coté en USDT, le calcul de taille traite ici USDT ≈ USD.
+</div>
+
+<div style="max-width:1040px;margin:0 auto;padding:0 1.25rem 2rem;color:var(--dim);font-size:.72rem;line-height:1.5">
+  V5.16 : Kraken est accédé via un connecteur Cloudflare. L'HTML ne contient ni API key ni clé privée.
+</div>
+</body>
+</html>
