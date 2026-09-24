@@ -1,0 +1,1447 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trade Discipline V7 — Market + Weekly Trend + Kraken</title>
+<style>
+:root{--bg:#0d1210;--panel:#151c19;--panel2:#101613;--line:#29332f;--ink:#e8ede9;--dim:#8b9892;--accent:#d4a24e;--green:#70b07f;--red:#c9634a;--blue:#78a9c9;--mono:"IBM Plex Mono","SF Mono",Consolas,monospace;--sans:Inter,"Helvetica Neue",Arial,sans-serif}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans)}
+.wrap{max-width:1560px;width:100%;margin:0 auto;padding:2rem 1.5rem 4rem}
+h1{font-size:1.45rem;font-weight:600;margin:0 0 .35rem}.subtitle{color:var(--dim);font-size:.9rem;margin:0 0 1.6rem}
+.card{background:var(--panel);border:1px solid var(--line);padding:1.25rem;margin-bottom:1rem}
+.top-grid{display:block;margin-bottom:1rem}
+.top-grid .card{margin-bottom:1rem}
+#output{width:100%}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem}.field{margin-bottom:0}.field.full{grid-column:1/-1}
+label{display:block;color:var(--dim);font-size:.78rem;margin-bottom:.4rem}
+input,select{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);font:inherit;padding:.72rem .75rem;border-radius:0}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+button{background:var(--accent);color:#17120a;border:0;padding:.78rem 1rem;font-weight:700;cursor:pointer;font-size:.9rem}
+button.secondary{background:var(--panel2);color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.45;cursor:not-allowed}.actions{display:flex;gap:.7rem;margin-top:1rem}.actions button{flex:1}
+.legend{font: .72rem var(--mono);color:var(--accent);letter-spacing:.03em;margin-bottom:.8rem}
+.statusbar{display:flex;justify-content:space-between;align-items:center;gap:1rem;font: .72rem var(--mono);color:var(--dim);margin-bottom:1rem}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dim);margin-right:7px}.dot.ok{background:var(--green)}.dot.bad{background:var(--red)}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:.65rem}.metric{background:var(--panel2);border:1px solid var(--line);padding:.8rem}.metric .k{color:var(--dim);font-size:.7rem}.metric .v{font:1rem var(--mono);margin-top:.35rem}
+.section{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line)}
+.rows{display:grid;grid-template-columns:auto 1fr;gap:.55rem 1rem}.rows dt{font:.72rem var(--mono);color:var(--dim)}.rows dd{margin:0;font:.88rem var(--mono);text-align:right}
+.good{color:var(--green)!important}.warn{color:var(--red)!important}.accent{color:var(--accent)!important}.blue{color:var(--blue)!important}
+.signal{font:1.2rem var(--mono);font-weight:700;margin:.2rem 0 .8rem}.small{font-size:.75rem;color:var(--dim);line-height:1.5}
+.check{display:flex;gap:.7rem;align-items:flex-start;padding:.55rem 0;border-bottom:1px solid var(--line);font-size:.82rem}.check:last-child{border-bottom:0}.check input{width:auto;margin-top:.2rem}
+details summary{cursor:pointer;color:var(--dim);font-size:.8rem}.note{font-size:.72rem;color:var(--dim);line-height:1.5;margin-top:1.2rem}
+.error{color:var(--red);background:rgba(201,99,74,.08);border:1px solid rgba(201,99,74,.35);padding:.8rem;font-size:.8rem;line-height:1.45}
+.loading{color:var(--accent);font: .78rem var(--mono)}
+@media(max-width:980px){.grid,.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.grid,.metrics{grid-template-columns:1fr}.actions{flex-direction:column}.rows dd{text-align:left}}
+
+.watchbox{display:flex;align-items:center;gap:.6rem;font:.85rem var(--mono);padding:.7rem .85rem;background:var(--panel2);border:1px solid var(--line)}
+
+.chiplist{display:flex;flex-wrap:wrap;gap:.4rem;margin-bottom:.8rem}
+.chiplist:empty{display:none}
+.chip{display:inline-flex;align-items:center;gap:.5rem;background:var(--panel2);border:1px solid var(--line);padding:.35rem .5rem .35rem .7rem;font:.78rem var(--mono)}
+.chip button{background:none;border:0;color:var(--dim);cursor:pointer;padding:0 .2rem;font-size:.9rem;line-height:1}
+.chip button:hover{color:var(--red)}
+.watchlist{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1rem}
+.watchlist:empty::after{content:'Ajoute au moins un actif ci-dessus pour démarrer la surveillance.';color:var(--dim);font-size:.8rem}
+.watchlist .watchbox{width:100%}
+.watchlist .watchbox .symtag{font-weight:700;color:var(--ink);flex-shrink:0}
+.watchbox .dot{width:9px;height:9px;flex-shrink:0}
+.watchbox.idle .dot{background:var(--dim)}
+.watchbox.watching .dot{background:var(--accent);animation:pulse 1.4s ease-in-out infinite}
+.watchbox.triggered .dot{background:var(--green);animation:none}
+.watchbox.error .dot{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.alertcard{border-color:var(--green)!important}
+.alertcard .signal{font:1.2rem var(--mono);font-weight:700;color:var(--green);margin:.2rem 0 .8rem}
+
+.histrow{padding:.85rem 0;border-bottom:1px solid var(--line)}
+.histrow:last-child{border-bottom:0}
+.histhead{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem;font:.85rem var(--mono)}
+
+.ladder{display:flex;flex-direction:column;border:1px solid var(--line)}
+.ladder-row{display:flex;align-items:center;gap:.7rem;padding:.6rem .85rem;border-bottom:1px solid var(--line);background:var(--panel2)}
+.ladder-row:last-child{border-bottom:0}
+.ladder-icon{font-size:.7rem;width:1rem;text-align:center;flex-shrink:0}
+.ladder-label{flex:1;font-size:.82rem;color:var(--dim)}
+.ladder-value{font:.9rem var(--mono);font-weight:600}
+.ladder-price{background:rgba(212,162,78,.08);border-top:1px solid var(--accent);border-bottom:1px solid var(--accent)}
+.ladder-price .ladder-label{color:var(--ink);font-weight:600}
+
+.setup-section{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--line)}
+.setup-section:first-of-type{margin-top:.2rem;padding-top:0;border-top:0}
+.setup-title{font-size:.76rem;font-weight:700;color:var(--ink);letter-spacing:.02em;margin:0 0 .75rem}
+.setup-subtitle{font-size:.7rem;color:var(--dim);margin:-.35rem 0 .8rem;line-height:1.45}
+.help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-left:.3rem;border:1px solid var(--dim);border-radius:50%;font:700 .62rem var(--sans);color:var(--dim);cursor:help;vertical-align:middle;position:relative}
+.help:hover,.help:focus{border-color:var(--accent);color:var(--accent);outline:none}
+.help::after{content:attr(data-tip);position:absolute;z-index:20;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:260px;padding:.7rem .75rem;background:#0a0f0d;color:var(--ink);border:1px solid var(--accent);box-shadow:0 8px 22px rgba(0,0,0,.35);font:400 .72rem/1.45 var(--sans);text-align:left;white-space:normal;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .12s ease}
+.help:hover::after,.help:focus::after{opacity:1;visibility:visible}
+.field label{min-height:1.2rem}
+.setup-impact{font: .68rem var(--mono);color:var(--dim);margin:.45rem 0 0}
+@media(max-width:560px){.help::after{left:0;transform:none;width:min(260px,80vw)}}
+
+.screen-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:.55rem;margin:0 0 1rem}
+.screen-nav button{background:var(--panel2);color:var(--dim);border:1px solid var(--line);font:.75rem var(--mono);padding:.8rem .75rem;text-align:left}
+.screen-nav button.active{background:rgba(212,162,78,.1);color:var(--accent);border-color:var(--accent)}
+.screen{display:none}.screen.active{display:block}
+.screen-title{font-size:1.05rem;font-weight:600;margin:0 0 .35rem}.screen-subtitle{font-size:.78rem;color:var(--dim);line-height:1.5;margin:0 0 1rem}
+.bias-card{border:1px solid var(--line);background:var(--panel2);padding:1rem;margin-bottom:1rem}
+.bias-value{font:700 1.35rem var(--mono);margin:.2rem 0 .35rem}
+.bias-why{font-size:.78rem;color:var(--dim);line-height:1.55}
+.trend-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1rem}
+.trend-card{background:var(--panel2);border:1px solid var(--line);padding:1rem}
+.trend-card h3{font:700 .78rem var(--mono);margin:0 0 .85rem;color:var(--accent)}
+.scorebar{display:flex;gap:.18rem;margin:.7rem 0}.scorebar span{height:7px;flex:1;background:var(--line)}.scorebar span.on{background:var(--accent)}
+.plan-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.75rem}
+.plan-box{background:var(--panel2);border:1px solid var(--line);padding:.9rem}.plan-box .k{font-size:.68rem;color:var(--dim)}.plan-box .v{font:700 .95rem var(--mono);margin-top:.35rem}
+.week-lock{display:flex;justify-content:space-between;gap:1rem;align-items:center;background:var(--panel2);border:1px solid var(--line);padding:.8rem .9rem;margin-bottom:1rem}
+.week-lock.taken{border-color:var(--green)}
+@media(max-width:980px){.trend-grid,.plan-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.screen-nav{grid-template-columns:1fr}.trend-grid,.plan-grid{grid-template-columns:1fr}.week-lock{align-items:flex-start;flex-direction:column}}
+
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+<h1>Trade Discipline — V7</h1>
+<p class="subtitle">V7 : ton analyse actuelle est conservée, avec 2 nouveaux écrans pour travailler la tendance de fond et construire un plan de trade hebdomadaire.</p>
+
+
+<div class="screen-nav">
+  <button class="active" data-screen="screen1">1 · Analyse & exécution</button>
+  <button data-screen="screen2">2 · Analyse de la semaine</button>
+  <button data-screen="screen3">3 · Plan de trade</button>
+</div>
+
+<section id="screen2" class="screen">
+  <div class="card">
+    <div class="screen-title">Analyse de la semaine</div>
+    <p class="screen-subtitle">Ici, on ne cherche pas encore un ordre. On cherche à déterminer le <b>biais de travail</b> à partir du Daily et du 4H : tendance, structure, position du prix par rapport aux moyennes et momentum. Ce résultat est une heuristique, pas une prédiction du cours.</p>
+    <div class="grid">
+      <div class="field">
+        <label>Actif</label>
+        <div class="watchbox"><span class="dot ok"></span><span id="weeklySymbolLabel">BTC</span></div>
+      </div>
+      <div class="field">
+        <label>Horizon</label>
+        <div class="watchbox"><span>7 jours environ</span></div>
+      </div>
+    </div>
+    <div class="actions">
+      <button id="weeklyAnalyze">Analyser la tendance</button>
+    </div>
+  </div>
+  <div id="weeklyOutput"></div>
+</section>
+
+<section id="screen3" class="screen">
+  <div class="card">
+    <div class="screen-title">Plan de trade hebdomadaire</div>
+    <p class="screen-subtitle">On part du biais de l'écran 2. L'idée est de <b>suivre la tendance</b> plutôt que d'anticiper un retournement : attendre un pullback vers une zone importante, puis une confirmation avant l'entrée.</p>
+    <div class="week-lock" id="weekTradeLock"><div><b>Trade de la semaine</b><div class="small" id="weekTradeStatus">Aucun trade marqué pour cette semaine.</div></div><button class="secondary" id="weekTradeToggle">Marquer comme pris</button></div>
+    <div class="actions">
+      <button id="buildWeeklyPlan">Construire le plan</button>
+    </div>
+  </div>
+  <div id="weeklyPlanOutput"></div>
+</section>
+
+<section id="screen1" class="screen active">
+
+<div class="card">
+<div class="legend">KRAKEN — CONNEXION DISTANTE</div>
+<p class="small" style="margin:0 0 1rem">Connexion à ton compte Kraken via ton propre Worker Cloudflare. <b>Ce connecteur peut désormais placer de vrais ordres</b> (marché + stop-loss attaché), et les SHORT utilisent Kraken Spot Margin avec le levier indiqué dans le setup dès que la surveillance est armée en trading en direct. Aucune clé API Kraken ne transite ni n'est stockée dans cette page — seul le token que tu définis ici (le <code>CLIENT_TOKEN</code>) est envoyé au Worker, et uniquement pour cette session (il n'est jamais sauvegardé).</p>
+<div class="grid" style="margin-bottom:1rem">
+  <div class="field">
+    <label for="krakenUrl">URL du connecteur</label>
+    <input id="krakenUrl" placeholder="https://trade-discipline-kraken.xxx.workers.dev">
+  </div>
+  <div class="field">
+    <label for="krakenToken">Token de connexion (CLIENT_TOKEN)</label>
+    <input id="krakenToken" type="password" placeholder="Pas ta clé Kraken">
+  </div>
+</div>
+<div id="krakenStatus" class="watchbox idle">
+  <span class="dot"></span><span id="krakenStatusLabel">Non testé</span>
+</div>
+<div class="actions">
+  <button id="krakenConnect">Tester la connexion Kraken</button>
+  <button class="secondary" id="krakenBalance">Lire le solde</button>
+</div>
+<div id="krakenOutput" class="small" style="margin-top:.7rem"></div>
+<div id="krakenLiveIndicator" class="small" style="margin-top:.5rem;font-weight:600">Trading en direct : désarmé</div>
+</div>
+
+<div class="top-grid">
+  <div class="card">
+  <div class="legend">SETUP</div>
+  <p class="small" style="margin:0 0 .8rem">Règle générale : ces paramètres définissent <b>ce que l'app recherche</b>, <b>comment elle calcule le risque</b> et, pour certains, <b>quand elle valide le signal</b>.</p>
+
+  <div class="setup-section">
+    <div class="setup-title">1 — Marché & direction</div>
+    <p class="setup-subtitle">Choisis le marché et le sens que tu veux analyser.</p>
+    <div class="grid">
+      <div class="field">
+        <label for="symbol">Actif <span class="help" tabindex="0" data-tip="Actif analysé par l'app. Le choix détermine les données de prix, RSI, support/résistance, ATR, volume et moyennes mobiles utilisés pour préparer le setup.">?</span></label>
+        <input id="symbol" value="BTC" placeholder="BTC">
+      </div>
+      <div class="field">
+        <label for="direction">Direction recherchée <span class="help" tabindex="0" data-tip="AUTO : LONG si le RSI 15min clôturé est ≤ 32, SHORT s'il est ≥ 68. LONG ou SHORT : prépare directement cette direction pour l'analyse. La surveillance continue reste déclenchée par les seuils RSI.">?</span></label>
+        <select id="direction"><option value="AUTO">AUTO — selon RSI</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select>
+      </div>
+      <div class="field full">
+        <label for="entry">Prix d'entrée de référence <span class="help" tabindex="0" data-tip="Optionnel. Ce prix est conservé comme référence dans le résultat, mais il ne remplace pas le niveau d'entrée calculé par la stratégie. La stratégie utilise le support 15min pour un LONG et la résistance 15min pour un SHORT.">?</span></label>
+        <input id="entry" type="number" step="any" placeholder="optionnel — uniquement comme référence">
+        <div class="setup-impact">Impact analyse : aucun sur le déclenchement ni sur le calcul de la quantité.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="setup-section">
+    <div class="setup-title">2 — Risque & exécution</div>
+    <p class="setup-subtitle">Ces paramètres déterminent surtout la taille de position et les conditions d'exécution.</p>
+    <div class="grid">
+      <div class="field">
+        <label for="risk">Risque maximum <span class="help" tabindex="0" data-tip="Montant maximal de risque utilisé pour calculer la quantité : quantité = risque USD ÷ distance au stop. Plus tu augmentes ce montant, plus la taille de position augmente. Il ne rend pas le signal plus ou moins probable.">?</span> <span class="small">(USD)</span></label>
+        <input id="risk" type="number" step="any" min="0.01" value="0.50">
+        <div class="setup-impact">Impact analyse : taille de position uniquement.</div>
+      </div>
+      <div class="field">
+        <label for="marginLeverage">Levier marge SHORT <span class="help" tabindex="0" data-tip="Levier utilisé uniquement pour les SHORT via Kraken Spot Margin. Il n'entre pas dans les critères RSI, volume ou R/R ; il sert à l'exécution de l'ordre et aux besoins de marge.">?</span></label>
+        <input id="marginLeverage" type="number" step="1" min="2" value="2">
+        <div class="setup-impact">Impact analyse : aucun. Impact exécution : marge disponible et ordre SHORT.</div>
+      </div>
+      <div class="field full">
+        <label for="atrMult">Distance du stop <span class="help" tabindex="0" data-tip="Multiplie l'ATR 15min pour placer le stop. Exemple : 1,5 = stop à 1,5 × ATR de l'entrée. Un stop plus large augmente la distance de risque par unité, réduit la quantité calculée et peut réduire le R/R.">?</span></label>
+        <input id="atrMult" type="number" step="0.1" min="0.1" value="1.5">
+        <div class="setup-impact">Impact analyse : stop → taille de position → R/R minimum requis.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="setup-section">
+    <div class="setup-title">3 — Conditions de confirmation</div>
+    <p class="setup-subtitle">Ces paramètres disent à l'app quand un setup devient suffisamment confirmé pour être retenu.</p>
+    <div class="grid">
+      <div class="field">
+        <label for="volMult">Volume minimum <span class="help" tabindex="0" data-tip="La dernière bougie 15min clôturée doit avoir un volume ≥ ce multiple de la moyenne des 20 bougies précédentes. Exemple : 1,3 = au moins 130 % de la moyenne. Plus le seuil est haut, moins de signaux passent.">?</span></label>
+        <input id="volMult" type="number" step="0.1" min="1" value="1.3">
+        <div class="setup-impact">Impact analyse : filtre directement la confirmation du signal.</div>
+      </div>
+      <div class="field">
+        <label for="minRR">R/R minimum pour le TP <span class="help" tabindex="0" data-tip="Le TP choisi est la moyenne mobile (SMA20/50/100/200) la plus proche dans le bon sens. Le signal n'est retenu que si le gain potentiel ÷ distance au stop atteint ce minimum. Plus le seuil est haut, moins de setups passent.">?</span></label>
+        <input id="minRR" type="number" step="0.1" min="0.1" value="1">
+        <div class="setup-impact">Impact analyse : filtre directement le setup et la cible.</div>
+      </div>
+      <div class="field full">
+        <label for="timeoutH">Expiration d'une position ouverte <span class="help" tabindex="0" data-tip="Durée maximale de suivi d'un trade ouvert avant de le classer comme expiré s'il n'a touché ni TP ni SL. Ce paramètre n'empêche pas la recherche initiale d'un signal.">?</span></label>
+        <input id="timeoutH" type="number" step="1" min="1" value="24">
+        <div class="setup-impact">Impact analyse : aucun sur le signal initial. Impact suivi : durée de vie maximale du trade.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions">
+    <button id="analyze">Analyser le marché</button>
+    <button class="secondary" id="refresh" disabled>Actualiser</button>
+  </div>
+  </div>
+
+  <div class="card setup-hint" style="margin-top:.8rem">
+    <p class="small" style="margin:0">Clique sur <b>« Analyser le marché »</b> pour voir le prix, le RSI et les niveaux support/résistance ci-dessous.</p>
+  </div>
+
+  <div id="output"></div>
+</div>
+
+<div class="card">
+<div class="legend">SURVEILLANCE CONTINUE</div>
+<p class="small" style="margin:0 0 1rem">Surveille le prix toutes les minutes, sur plusieurs actifs en parallèle. Le RSI 15min est recalculé uniquement à chaque nouvelle bougie 15min clôturée. RSI ≤ 32 → recherche LONG, attente du contact avec le support 15min. RSI ≥ 68 → recherche SHORT, attente du contact avec la résistance 15min. Le contact seul ne suffit pas : le volume de la bougie doit aussi dépasser le seuil réglé. Risque, ATR et volume (réglés ci-dessus) s'appliquent à tous les actifs surveillés. <b>Si un connecteur Kraken est renseigné et confirmé au démarrage, chaque signal confirmé place un vrai ordre sur ton compte.</b> Sans connecteur, la surveillance reste en mode papier (aucun ordre réel).</p>
+
+<div class="field" style="margin-bottom:.8rem">
+  <label for="watchSymbolInput">Ajouter un actif à la surveillance</label>
+  <div style="display:flex;gap:.5rem">
+    <input id="watchSymbolInput" placeholder="XRP">
+    <button class="secondary" id="watchAddSymbol" style="flex:0 0 auto;width:auto;padding:.72rem 1.1rem">Ajouter</button>
+  </div>
+</div>
+
+<div id="watchSymbolChips" class="chiplist"></div>
+<div id="watchStatusList" class="watchlist"></div>
+
+<div class="actions">
+  <button id="watchStart">Démarrer la surveillance</button>
+  <button class="secondary" id="watchStop" disabled>Arrêter</button>
+</div>
+<div id="watchMeta" class="small" style="margin-top:.7rem"></div>
+<div class="small" style="margin-top:.5rem">RSI : mise à jour uniquement après clôture d’une bougie 15min · Prix et contact support/résistance : vérifiés chaque minute.</div>
+</div>
+
+<div id="watchOutput"></div>
+<div id="liveOrderAlert"></div>
+
+<div class="card">
+<div class="legend">HISTORIQUE DES SIGNAUX</div>
+<p class="small" style="margin:0 0 1rem">Chaque signal détecté pendant la surveillance reste ici, même après avoir rechargé la page. Le statut (take-profit touché, stop touché, ou expiré sans résolution) se met à jour automatiquement tant que l'actif reste dans la liste de surveillance ci-dessus. Sert de base pour ton backtesting manuel.</p>
+<div id="historyList"></div>
+<div class="actions"><button class="secondary" id="exportXlsx">Exporter en Excel (.xlsx)</button><button class="secondary" id="historyClear">Vider l'historique</button></div>
+</div>
+
+
+<p class="note">
+    Outil d'aide à la décision basé sur des règles que tu définis toi-même — pas un conseil financier.
+    Règles actuelles : RSI 15min ≤ 32 → LONG, entrée au support 15min, stop = ATR15 × multiplicateur ·
+    RSI 15min ≥ 68 → SHORT, entrée à la résistance 15min, stop = ATR15 × multiplicateur.
+    Take-profit : toujours la moyenne mobile (20/50/100/200 sur 15min) la plus proche du bon côté du prix. Le signal n'est confirmé que si le R/R obtenu avec cette MM atteint le minimum réglé (sinon la surveillance continue sans déclencher).
+    Un signal exige en plus un volume de la dernière bougie 15min supérieur au seuil réglé (× moyenne des 20 dernières bougies).
+    Le RSI 1h et la structure 1h ne sont pas utilisés pour le moment.
+  </p>
+</section>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=(n,d=4)=>Number(n).toLocaleString('fr-FR',{maximumFractionDigits:d});
+const pct=(n,d=2)=>(n*100).toLocaleString('fr-FR',{maximumFractionDigits:d})+'%';
+let state=null;
+renderHistory();
+
+async function api(path){
+  const r=await fetch('https://api.binance.com'+path);
+  if(!r.ok) throw new Error('API Binance: HTTP '+r.status);
+  return r.json();
+}
+function closes(ks){return ks.map(k=>+k[4])}
+function rsiWilder(cs, period=14){
+  if(cs.length<=period) return null;
+  let gains=0,losses=0;
+  for(let i=1;i<=period;i++){let x=cs[i]-cs[i-1];if(x>=0)gains+=x;else losses-=x}
+  let ag=gains/period, al=losses/period;
+  for(let i=period+1;i<cs.length;i++){
+    let x=cs[i]-cs[i-1],g=Math.max(x,0),l=Math.max(-x,0);
+    ag=(ag*(period-1)+g)/period; al=(al*(period-1)+l)/period;
+  }
+  if(al===0)return 100;
+  return 100-100/(1+ag/al);
+}
+function sma(cs,period){
+  if(cs.length<period) return null;
+  const slice=cs.slice(-period);
+  return slice.reduce((a,b)=>a+b,0)/period;
+}
+function atr(ks,period=14){
+  if(ks.length<period+1)return null;
+  let trs=[];
+  for(let i=1;i<ks.length;i++){let h=+ks[i][2],l=+ks[i][3],pc=+ks[i-1][4];trs.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)))}
+  let a=trs.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  for(let i=period;i<trs.length;i++)a=(a*(period-1)+trs[i])/period;
+  return a;
+}
+function pivots(ks,left=2,right=2){
+  let lows=[], highs=[];
+  for(let i=left;i<ks.length-right;i++){
+    let lo=+ks[i][3],hi=+ks[i][2],isL=true,isH=true;
+    for(let j=i-left;j<=i+right;j++){if(j===i)continue;if(+ks[j][3]<=lo)isL=false;if(+ks[j][2]>=hi)isH=false}
+    if(isL)lows.push({p:lo,i}); if(isH)highs.push({p:hi,i});
+  }
+  return {lows,highs};
+}
+function nearestLevels(ks,price){
+  const p=pivots(ks), lookback=120;
+  const lows=p.lows.filter(x=>x.i>=Math.max(0,ks.length-lookback)).map(x=>x.p);
+  const highs=p.highs.filter(x=>x.i>=Math.max(0,ks.length-lookback)).map(x=>x.p);
+  const supports=[...new Set(lows.filter(x=>x<price).sort((a,b)=>b-a))];
+  const resistances=[...new Set(highs.filter(x=>x>price).sort((a,b)=>a-b))];
+  return {
+    support:supports[0]??Math.min(...ks.slice(-20).map(k=>+k[3])),
+    resistance:resistances[0]??Math.max(...ks.slice(-20).map(k=>+k[2])),
+    supports,      // triés du plus proche au plus éloigné
+    resistances,   // triés du plus proche au plus éloigné
+  };
+}
+// Prend la MM la plus proche du bon côté du prix (au-dessus pour un LONG, en dessous pour
+// un SHORT) — jamais une MM plus loin, même si le R/R serait meilleur. S'il n'y a aucune MM
+// du bon côté, il n'y a pas de cible valable.
+function pickTarget(dir,entry,mas){
+  const values=Object.entries(mas).filter(([,v])=>v!=null);
+  const candidates=values.filter(([,v])=>dir==='LONG'?v>entry:v<entry);
+  if(candidates.length===0) return null;
+  const sorted=candidates.sort((a,b)=>dir==='LONG'?a[1]-b[1]:b[1]-a[1]);
+  const [name,level]=sorted[0];
+  return {tp:level,source:name};
+}
+async function loadSymbol(sym){
+  const s=sym.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const symbol=s.endsWith('USDT')?s:s+'USDT';
+  const [ticker,k15,k1h]=await Promise.all([
+    api('/api/v3/ticker/price?symbol='+symbol),
+    api('/api/v3/klines?symbol='+symbol+'&interval=15m&limit=250'),
+    api('/api/v3/klines?symbol='+symbol+'&interval=1h&limit=250')
+  ]);
+  return {symbol,price:+ticker.price,k15,k1h};
+}
+function build(data){
+  const p=data.price, r15=rsiWilder(closes(data.k15)), r1h=rsiWilder(closes(data.k1h));
+  const sr15=nearestLevels(data.k15,p), sr1h=nearestLevels(data.k1h,p);
+  const atr15=atr(data.k15), atr1h=atr(data.k1h);
+  const c15=closes(data.k15);
+  const mas={SMA20:sma(c15,20),SMA50:sma(c15,50),SMA100:sma(c15,100),SMA200:sma(c15,200)};
+  // Volume is compared on the last CLOSED 15min candle, not the one still forming
+  // (an in-progress candle has had less time to accumulate volume, which would
+  // always look artificially low regardless of real market activity).
+  const closed15=data.k15.slice(0,-1);
+  const lastVol=+closed15[closed15.length-1][5];
+  const vol15=closed15.slice(-21,-1).reduce((a,k)=>a+(+k[5]),0)/20;
+  let dir=$('direction').value;
+  const auto=dir==='AUTO';
+  if(auto) dir=r15<32?'LONG':r15>68?'SHORT':'NONE';
+  const entryRaw=parseFloat($('entry').value);
+  const riskUsd=Math.max(.01,parseFloat($('risk').value)||.50);
+  const marginLeverage=Math.max(2,Math.floor(parseFloat($('marginLeverage').value)||2));
+  const atrMult=Math.max(.1,parseFloat($('atrMult').value)||1.5);
+  const volMult=Math.max(1,parseFloat($('volMult').value)||1.3);
+  const minRR=Math.max(.1,parseFloat($('minRR').value)||1);
+
+  // STRATEGY V5.14:
+  // LONG  = RSI <= 32, entry at support15, stop = ATR15 × atrMult below entry.
+  // SHORT = RSI >= 68, entry at resistance15, stop = ATR15 × atrMult above entry.
+  // TP = nearest MA (20/50/100/200) on the correct side of price — never a farther one.
+  // Signal requires last candle volume >= volMult × average, AND R/R (vs that nearest MA) >= minRR.
+  const volumeOk=lastVol>=volMult*vol15;
+  const plannedEntry=dir==='LONG'?sr15.support:dir==='SHORT'?sr15.resistance:null;
+  // Optional manual entry is kept as a reference, but does not replace the strategy entry level.
+  const entry=plannedEntry;
+  const stopDistance=atr15*atrMult;
+  const stop=dir==='LONG'?entry-stopDistance:dir==='SHORT'?entry+stopDistance:null;
+  const target=dir!=='NONE'?pickTarget(dir,entry,mas):null;
+  const tp=target?target.tp:null;
+  const tpSource=target?target.source:null;
+  const entryReference=Number.isFinite(entryRaw)&&entryRaw>0?entryRaw:null;
+  const riskPerUnit=stop?Math.abs(entry-stop):null;
+  const qty=riskPerUnit?riskUsd/riskPerUnit:null;
+  const rr=(tp&&riskPerUnit)?Math.abs(tp-entry)/riskPerUnit:null;
+  const rrOk=rr!=null&&rr>=minRR;
+  const momentum=((dir==='LONG'&&r15<=32)||(dir==='SHORT'&&r15>=68))&&volumeOk&&rrOk;
+  const atrPct15=atr15/p, atrPct1h=atr1h/p;
+  return {data,r15,r1h,sr15,sr1h,mas,atr15,atr1h,vol15,lastVol,dir,auto,entry,entryReference,riskUsd,marginLeverage,momentum,stop,tp,tpSource,riskPerUnit,qty,rr,rrOk,minRR,atrPct15,atrPct1h,volumeOk,atrMult,volMult,stopDistance};
+}
+function buildLevelLadder(s){
+  const items=[
+    {label:'Résistance 1h',value:s.sr1h.resistance,type:'resistance'},
+    {label:'Résistance 15min',value:s.sr15.resistance,type:'resistance'},
+    {label:'Cours actuel',value:s.data.price,type:'price'},
+    {label:'Support 15min',value:s.sr15.support,type:'support'},
+    {label:'Support 1h',value:s.sr1h.support,type:'support'},
+  ].sort((a,b)=>b.value-a.value);
+
+  return items.map(it=>{
+    const icon=it.type==='resistance'?'▲':it.type==='support'?'▼':'●';
+    const cls=it.type==='resistance'?'warn':it.type==='support'?'good':'accent';
+    const rowCls=it.type==='price'?'ladder-row ladder-price':'ladder-row';
+    return `<div class="${rowCls}">
+      <span class="ladder-icon ${cls}">${icon}</span>
+      <span class="ladder-label">${it.label}</span>
+      <span class="ladder-value ${cls}">${fmt(it.value)}</span>
+    </div>`;
+  }).join('');
+}
+
+function render(s){
+  const signal=s.dir==='NONE'?'ATTENTE':(s.momentum?'ORDRE POTENTIEL':'ATTENTE');
+  const signalClass=signal==='ORDRE POTENTIEL'?'good':signal==='ATTENTE'?'warn':'';
+  const volumeRatio=s.lastVol/s.vol15;
+  const rrLabel=s.rr==null?'—':s.rr<1?'faible':s.rr<1.5?'à surveiller':'favorable';
+  $('output').innerHTML=`
+  <div class="card">
+    <div class="statusbar"><span><span class="dot ok"></span>${s.data.symbol}</span><span>mis à jour ${new Date().toLocaleTimeString('fr-FR')}</span></div>
+    <div class="metrics">
+      <div class="metric"><div class="k">PRIX ACTUEL</div><div class="v">${fmt(s.data.price)}</div></div>
+      <div class="metric"><div class="k">RSI 15 MIN</div><div class="v ${s.r15<32?'good':s.r15>68?'warn':''}">${fmt(s.r15,2)}</div></div>
+      <div class="metric"><div class="k">RSI 1 H</div><div class="v">${fmt(s.r1h,2)}</div></div>
+    </div>
+    <div class="section">
+      <div class="legend">NIVEAUX AUTOMATIQUES</div>
+      <div class="ladder">
+        ${buildLevelLadder(s)}
+      </div>
+    </div>
+    <div class="section">
+      <div class="legend">VOLATILITÉ / VOLUME</div>
+      <div class="rows">
+        <dt>ATR 15min</dt><dd>${fmt(s.atr15)} (${pct(s.atrPct15)})</dd>
+        <dt>ATR 1h</dt><dd>${fmt(s.atr1h)} (${pct(s.atrPct1h)})</dd>
+        <dt>Volume 15min vs moyenne 20</dt><dd class="${s.volumeOk?'good':'warn'}">${fmt(volumeRatio,2)}× ${s.volumeOk?'✓ confirmé':'✕ insuffisant (seuil '+fmt(s.volMult,1)+'×)'}</dd>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="legend">DÉCISION</div>
+    <div class="signal ${signalClass}">${signal}</div>
+  </div>
+
+  ${s.dir!=='NONE'?`<div class="card">
+    <div class="legend">ORDRE PRÉPARÉ</div>
+    ${s.tp===null?`
+    <p class="small">Aucune moyenne mobile (20/50/100/200) du bon côté du prix pour servir de take-profit — pas d'ordre proposé pour l'instant.</p>
+    `:`
+    <div class="rows">
+      <dt>Direction</dt><dd class="accent">${s.dir}</dd>
+      <dt>Entrée</dt><dd>${fmt(s.entry)}</dd>
+      ${s.entryReference!==null?`<dt>Prix envisagé</dt><dd>${fmt(s.entryReference)}</dd>`:''}
+      <dt>Stop-loss (ATR×${fmt(s.atrMult,1)})</dt><dd>${fmt(s.stop)}</dd>
+      <dt>Take-profit</dt><dd>${fmt(s.tp)} <span class="small">(${s.tpSource})</span></dd>
+      <dt>Risque max</dt><dd>${fmt(s.riskUsd,2)} USD</dd>
+      ${s.dir==='SHORT'?`<dt>Levier marge</dt><dd>${fmt(s.marginLeverage,0)}×</dd>`:''}
+      <dt>Distance au stop</dt><dd>${pct(s.riskPerUnit/s.entry)}</dd>
+      <dt>Quantité</dt><dd class="accent">${fmt(s.qty,6)}</dd>
+      <dt>Notionnel</dt><dd class="accent">${fmt(s.qty*s.entry,2)} USDT</dd>
+      <dt>R/R</dt><dd class="${s.rrOk?'good':'warn'}">${fmt(s.rr,2)} — ${rrLabel}${s.rrOk?'':' (minimum '+fmt(s.minRR,1)+' requis)'}</dd>
+    </div>
+    <div class="section">
+      <div class="small"><b>Important :</b> le calcul de taille vise à limiter la perte au montant indiqué si le stop est exécuté. Frais, slippage, funding, taille minimale et règles de l'exchange ne sont pas encore inclus.</div>
+    </div>
+    <div class="section">
+      <button class="secondary" id="krakenTestOrder">Placer cet ordre sur Kraken (test manuel)</button>
+      <div id="krakenTestOrderOutput" class="small" style="margin-top:.6rem"></div>
+    </div>
+    `}
+  </div>`:''}`;
+  const testBtn=$('krakenTestOrder');
+  if(testBtn) testBtn.onclick=()=>placeManualKrakenOrder(s);
+}
+$('analyze').onclick=async()=>{
+  const out=$('output'); const sym=$('symbol').value.trim();
+  if(!sym){out.innerHTML='<div class="error">Entre un actif, par exemple BTC.</div>';return}
+  $('analyze').disabled=true;$('refresh').disabled=true;
+  out.innerHTML='<div class="card loading">Récupération des données marché…</div>';
+  try{const d=await loadSymbol(sym);state=build(d);render(state);$('refresh').disabled=false}
+  catch(e){out.innerHTML='<div class="error"><b>Impossible de récupérer les données.</b><br>'+e.message+'<br><br>Vérifie le symbole (BTC, ETH, SOL…) et ta connexion internet. Cette V5 utilise l’API publique Binance depuis ton navigateur.</div>'}
+  finally{$('analyze').disabled=false}
+};
+$('refresh').onclick=async()=>{$('analyze').click()};
+$('symbol').addEventListener('keydown',e=>{if(e.key==='Enter')$('analyze').click()});
+
+// ---------- SURVEILLANCE CONTINUE (multi-actifs) ----------
+const POLL_MS=60000;
+let watchSymbols=[]; // ex: ['BTC','XRP']
+let liveTradingArmed=false; // true = les signaux confirmés placent de vrais ordres Kraken
+let watchStates={};  // sym -> {state,lastClosed15m,r15}
+let watchTimer=null;
+let watchRunning=false;
+let watchFirstCheckAt=null;
+let watchNextAt=null;
+
+function normSymbol(raw){
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/USDT$/,'');
+}
+
+function notify(title,body){
+  try{
+    if('Notification' in window && Notification.permission==='granted'){
+      new Notification(title,{body});
+    }
+  }catch(e){}
+}
+
+function renderSymbolChips(){
+  $('watchSymbolChips').innerHTML=watchSymbols.map(sym=>
+    `<span class="chip">${sym}<button data-sym="${sym}" class="chipRemove" title="Retirer">✕</button></span>`
+  ).join('');
+  $('watchSymbolChips').querySelectorAll('.chipRemove').forEach(btn=>{
+    btn.onclick=()=>removeWatchSymbol(btn.dataset.sym);
+  });
+}
+
+function renderSymbolRow(sym){
+  const st=watchStates[sym];
+  let row=document.getElementById('watchrow-'+sym);
+  if(!row){
+    row=document.createElement('div');
+    row.id='watchrow-'+sym;
+    row.className='watchbox idle';
+    row.innerHTML='<span class="dot"></span><span class="symtag">'+sym+'</span><span class="rowlabel"></span>';
+    $('watchStatusList').appendChild(row);
+  }
+  row.className='watchbox '+(st?st.mode:'idle');
+  row.querySelector('.rowlabel').textContent=st?st.label:'En attente de démarrage…';
+}
+
+function addWatchSymbol(raw){
+  const sym=normSymbol(raw);
+  if(!sym) return;
+  if(watchSymbols.includes(sym)){ $('watchSymbolInput').value=''; return; }
+  watchSymbols.push(sym);
+  watchStates[sym]={state:'idle',lastClosed15m:null,r15:null,mode:'idle',label:watchRunning?'Vérification en cours…':'En attente de démarrage…'};
+  renderSymbolChips();
+  renderSymbolRow(sym);
+  $('watchSymbolInput').value='';
+  if(watchRunning) watchTickSymbol(sym); // récupère l'état tout de suite pour un actif ajouté en cours de route
+}
+
+function removeWatchSymbol(sym){
+  watchSymbols=watchSymbols.filter(s=>s!==sym);
+  delete watchStates[sym];
+  const row=document.getElementById('watchrow-'+sym);
+  if(row) row.remove();
+  renderSymbolChips();
+}
+
+$('watchAddSymbol').onclick=()=>addWatchSymbol($('watchSymbolInput').value);
+$('watchSymbolInput').addEventListener('keydown',e=>{if(e.key==='Enter')addWatchSymbol($('watchSymbolInput').value)});
+
+function renderWatchMeta(errorMsg){
+  const now=new Date().toLocaleTimeString('fr-FR');
+  const next=watchNextAt?watchNextAt.toLocaleTimeString('fr-FR'):'—';
+  const first=watchFirstCheckAt?watchFirstCheckAt.toLocaleTimeString('fr-FR'):'—';
+  $('watchMeta').innerHTML = errorMsg
+    ? '⚠️ '+errorMsg+' — nouvelle tentative à '+next
+    : 'Première vérification : '+first+' · Dernière vérification : '+now+' · prochaine : '+next;
+}
+
+function orderSnapshot(dir,data,r15,sr15,mas,riskUsd,stopDistance,marginLeverage){
+  const entry=dir==='LONG'?sr15.support:sr15.resistance;
+  const stop=dir==='LONG'?entry-stopDistance:entry+stopDistance;
+  const target=pickTarget(dir,entry,mas);
+  if(!target) return null; // pas de MM du bon côté -> pas de cible valable
+  const tp=target.tp;
+  const tpSource=target.source;
+  const riskPerUnit=Math.abs(entry-stop);
+  const qty=riskUsd/riskPerUnit;
+  const rr=Math.abs(tp-entry)/riskPerUnit;
+  return {dir,symbol:data.symbol.replace('USDT',''),price:data.price,r15,entry,stop,tp,tpSource,riskUsd,marginLeverage,riskPerUnit,qty,rr,ts:Date.now()};
+}
+
+// ---------- HISTORIQUE (persisté dans localStorage) ----------
+const HISTORY_KEY='td_v4_history';
+const HISTORY_MAX=200;
+
+function loadHistory(){
+  let list;
+  try{ list=JSON.parse(localStorage.getItem(HISTORY_KEY))||[]; }
+  catch(e){ return []; }
+  // Migration ponctuelle : d'anciennes entrées ont pu être enregistrées avec le symbole
+  // complet ("BTCUSDT") au lieu du format court ("BTC") utilisé partout ailleurs, ce qui
+  // empêchait checkOpenTrades de jamais les faire correspondre. On les corrige une bonne
+  // fois pour toutes au chargement.
+  let migrated=false;
+  list.forEach(e=>{
+    if(e.symbol && e.symbol.endsWith('USDT')){
+      e.symbol=e.symbol.replace('USDT','');
+      migrated=true;
+    }
+  });
+  if(migrated) saveHistory(list);
+  return list;
+}
+function saveHistory(list){
+  try{ localStorage.setItem(HISTORY_KEY, JSON.stringify(list.slice(0,HISTORY_MAX))); }
+  catch(e){}
+}
+function addToHistory(snap){
+  snap.outcome='open';
+  snap.resolvedAt=null;
+  snap.resolvedPrice=null;
+  const list=loadHistory();
+  list.unshift(snap);
+  saveHistory(list);
+  renderHistory();
+}
+
+// Vérifie les signaux encore "ouverts" pour ce symbole contre la fourchette de la bougie en cours,
+// et les fait expirer si le délai réglé est dépassé sans TP ni SL touché.
+// Pour un trade en direct (e.live), le stop est déjà géré par Kraken lui-même (ordre attaché) —
+// seul le take-profit nécessite qu'on demande activement la clôture.
+async function checkOpenTrades(symClean,data,highNow,lowNow,timeoutH){
+  const list=loadHistory();
+  let changed=false;
+  for(const e of list){
+    if(e.outcome!=='open' || e.symbol!==symClean) continue;
+
+    let hitSl=false, hitTp=false;
+    if(e.dir==='LONG'){
+      if(lowNow<=e.stop) hitSl=true;
+      else if(highNow>=e.tp) hitTp=true;
+    }else{
+      if(highNow>=e.stop) hitSl=true;
+      else if(lowNow<=e.tp) hitTp=true;
+    }
+
+    if(hitSl){
+      if(e.live){
+        try{ e.exitCancelInfo=await krakenCancelExits(e.symbol,e.takeProfitTxId||null,false); }
+        catch(err){ notify('Annulation du TP Kraken échouée ('+e.symbol+')',err.message); }
+      }
+      e.outcome='sl_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.stop; changed=true;
+    }else if(hitTp){
+      if(e.live){
+        try{
+          if(e.takeProfitTxId){
+            const res=await krakenCancelExits(e.symbol,e.takeProfitTxId,true);
+            e.exitCancelInfo=res;
+            e.outcome='tp_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.tp; changed=true;
+            notify('TP atteint, position clôturée ('+e.symbol+')','Le TP Kraken a été déclenché ; le stop restant a été annulé.');
+            renderLiveOrderAlert('close',e,e.takeProfitTxId);
+          }else{
+            // Compatibilité avec les anciens ordres réels V5.18.3 qui n'ont pas encore
+            // de TP Kraken enregistré : on garde le fallback de clôture au marché.
+            const res=await krakenClose(e.symbol,e.dir,e.qty,e.marginLeverage);
+            e.closeTxId=(res.txid&&res.txid[0])||null;
+            e.outcome='tp_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.tp; changed=true;
+            notify('TP atteint, position clôturée ('+e.symbol+')','Clôture de secours envoyée à Kraken.');
+            renderLiveOrderAlert('close',e,e.closeTxId);
+          }
+        }catch(err){
+          notify('Clôture Kraken refusée ('+e.symbol+')',err.message);
+          // On ne marque pas résolu : on retentera au prochain tick tant que le TP reste dépassé.
+        }
+      }else{
+        e.outcome='tp_hit'; e.resolvedAt=Date.now(); e.resolvedPrice=e.tp; changed=true;
+      }
+    }else if(Date.now()-e.ts>=timeoutH*3600000){
+      e.outcome='timeout'; e.resolvedAt=Date.now(); e.resolvedPrice=data.price; changed=true;
+    }
+  }
+  if(changed){ saveHistory(list); renderHistory(); }
+}
+
+function renderHistory(){
+  const list=loadHistory();
+  const container=$('historyList');
+  if(list.length===0){
+    container.innerHTML='<p class="small">Aucun signal enregistré pour l\'instant.</p>';
+    return;
+  }
+  container.innerHTML=list.map(snap=>{
+    const rrLabel=snap.rr<1?'faible':snap.rr<1.5?'à surveiller':'favorable';
+    const dt=new Date(snap.ts);
+    const dateStr=dt.toLocaleDateString('fr-FR')+' '+dt.toLocaleTimeString('fr-FR');
+    const outcome=snap.outcome||'open';
+    const outcomeLabel={open:'⏳ en cours',tp_hit:'✓ take-profit touché',sl_hit:'✕ stop-loss touché',timeout:'— expiré sans résolution'}[outcome];
+    const outcomeClass={open:'accent',tp_hit:'good',sl_hit:'warn',timeout:''}[outcome];
+    const resolvedRow=snap.resolvedAt
+      ? `<dt>Résolu le</dt><dd>${new Date(snap.resolvedAt).toLocaleDateString('fr-FR')} ${new Date(snap.resolvedAt).toLocaleTimeString('fr-FR')}</dd><dt>Prix de résolution</dt><dd>${fmt(snap.resolvedPrice)}</dd>`
+      : '';
+    return `<div class="histrow">
+      <div class="histhead">
+        <span class="accent">${snap.dir}</span>
+        <span class="small">${snap.symbol}</span>
+        ${snap.live?'<span class="warn" style="font-weight:700">🔴 RÉEL</span>':'<span class="small">papier</span>'}
+        <span class="small" style="margin-left:auto">${dateStr}</span>
+      </div>
+      <div class="rows">
+        <dt>Statut</dt><dd class="${outcomeClass}">${outcomeLabel}</dd>
+        <dt>RSI au déclenchement</dt><dd>${fmt(snap.r15,2)}</dd>
+        <dt>Entrée</dt><dd>${fmt(snap.entry)}</dd>
+        <dt>Stop-loss</dt><dd>${fmt(snap.stop)}</dd>
+        <dt>Take-profit</dt><dd>${fmt(snap.tp)} <span class="small">(${snap.tpSource||'—'})</span></dd>
+        <dt>R/R visé</dt><dd class="${snap.rr>=1.5?'good':snap.rr>=1?'accent':'warn'}">${fmt(snap.rr,2)} — ${rrLabel}</dd>
+        ${snap.live?`<dt>Ordre d'entrée Kraken</dt><dd>${snap.entryTxId||'—'}</dd>`:''}
+        ${snap.takeProfitTxId?`<dt>Ordre take-profit Kraken</dt><dd>${snap.takeProfitTxId}</dd>`:`${snap.live&&snap.outcome==='open'&&snap.entryTxId?'<dt>Take-profit Kraken</dt><dd><button type=\"button\" class=\"secondary\" style=\"padding:.35rem .6rem;font-size:.75rem\" onclick=\"addMissingTakeProfit(\''+snap.entryTxId+'\')\">Ajouter le TP Kraken</button></dd>':''}`}
+        ${snap.closeTxId?`<dt>Ordre de clôture Kraken</dt><dd>${snap.closeTxId}</dd>`:''}
+        ${resolvedRow}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function outcomeLabelFr(outcome){
+  return {open:'en cours',tp_hit:'take-profit touché',sl_hit:'stop-loss touché',timeout:'expiré sans résolution'}[outcome]||outcome;
+}
+
+async function addMissingTakeProfit(entryTxId){
+  const list=loadHistory();
+  const snap=list.find(x=>x.entryTxId===entryTxId && x.live && x.outcome==='open');
+  if(!snap) return;
+  if(snap.takeProfitTxId){ notify('TP déjà présent','Le take-profit Kraken est déjà enregistré pour ce trade.'); return; }
+  if(!confirm('Ajouter le take-profit Kraken à '+snap.symbol+' à '+fmt(snap.tp)+' ?')) return;
+  try{
+    const res=await krakenAddTakeProfit(snap.symbol,snap.dir,snap.qty,snap.tp,snap.marginLeverage);
+    snap.takeProfitTxId=(res.txid&&res.txid[0])||null;
+    snap.takeProfitPlaced=!!snap.takeProfitTxId;
+    snap.takeProfitError=null;
+    saveHistory(list); renderHistory();
+    renderLiveOrderAlert('entry',snap,snap.entryTxId);
+    notify('TP Kraken ajouté ('+snap.symbol+')','Take-profit placé à '+fmt(snap.tp)+'.');
+  }catch(err){
+    snap.takeProfitError=err.message;
+    saveHistory(list); renderHistory();
+    notify('Ajout du TP Kraken refusé ('+snap.symbol+')',err.message);
+  }
+}
+
+$('exportXlsx').onclick=()=>{
+  if(typeof XLSX==='undefined'){
+    alert('La librairie d\'export (XLSX) n\'a pas pu se charger — vérifie ta connexion internet et réessaie.');
+    return;
+  }
+
+  const history=loadHistory().map(s=>({
+    'Date':new Date(s.ts).toLocaleString('fr-FR'),
+    'Actif':s.symbol,
+    'Direction':s.dir,
+    'RSI au déclenchement':s.r15,
+    'Entrée':s.entry,
+    'Stop-loss':s.stop,
+    'Take-profit':s.tp,
+    'Source du TP':s.tpSource||'',
+    'R/R visé':s.rr,
+    'Quantité':s.qty,
+    'Risque (USD)':s.riskUsd,
+    'Statut':outcomeLabelFr(s.outcome||'open'),
+    'Date de résolution':s.resolvedAt?new Date(s.resolvedAt).toLocaleString('fr-FR'):'',
+    'Prix de résolution':s.resolvedPrice||'',
+    'Ordre réel':s.live?'Oui':'Non',
+    'Txid entrée Kraken':s.entryTxId||'',
+    'Txid take-profit Kraken':s.takeProfitTxId||'',
+    'Txid clôture Kraken':s.closeTxId||'',
+  }));
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(history),'Signaux');
+
+  const stamp=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  XLSX.writeFile(wb,'trade-discipline-signaux-'+stamp+'.xlsx');
+};
+
+$('historyClear').onclick=()=>{
+  if(!confirm('Vider tout l\'historique des signaux ?')) return;
+  saveHistory([]);
+  renderHistory();
+};
+
+async function watchTickSymbol(sym){
+  const st=watchStates[sym];
+  if(!st) return;
+  const riskUsd=Math.max(.01,parseFloat($('risk').value)||.50);
+  const marginLeverage=Math.max(2,Math.floor(parseFloat($('marginLeverage').value)||2));
+  const atrMult=Math.max(.1,parseFloat($('atrMult').value)||1.5);
+  const volMult=Math.max(1,parseFloat($('volMult').value)||1.3);
+  const minRR=Math.max(.1,parseFloat($('minRR').value)||1);
+
+  try{
+    const data=await loadSymbol(sym);
+
+    // The last kline is the currently-forming candle.
+    // RSI is recalculated only when a NEW closed 15m candle appears.
+    const closed=data.k15[data.k15.length-2];
+    const closedOpenTime=closed[0];
+
+    if(st.lastClosed15m!==closedOpenTime){
+      st.lastClosed15m=closedOpenTime;
+      st.r15=rsiWilder(closes(data.k15.slice(0,-1)));
+    }
+
+    const r15=st.r15;
+    const sr15=nearestLevels(data.k15,data.price);
+    const c15=closes(data.k15);
+    const mas={SMA20:sma(c15,20),SMA50:sma(c15,50),SMA100:sma(c15,100),SMA200:sma(c15,200)};
+    const atr15=atr(data.k15);
+    const stopDistance=atr15*atrMult;
+    // Same fix as RSI: compare volume on the last CLOSED candle, not the forming one.
+    const closed15=data.k15.slice(0,-1);
+    const lastVol=+closed15[closed15.length-1][5];
+    const vol15=closed15.slice(-21,-1).reduce((a,k)=>a+(+k[5]),0)/20;
+    const volumeOk=lastVol>=volMult*vol15;
+    const longActive=r15<=32;
+    const shortActive=r15>=68;
+    const volRatio=lastVol/vol15;
+
+    // The forming candle's high/low (updated continuously by Binance, even before it closes)
+    // capture the full range reached since it opened — unlike a single polled price, which can
+    // miss a level that was touched and already reversed away from between two 60s checks.
+    const forming=data.k15[data.k15.length-1];
+    const highNow=+forming[2];
+    const lowNow=+forming[3];
+    const touchLong=lowNow<=sr15.support;
+    const touchShort=highNow>=sr15.resistance;
+
+    const timeoutH=Math.max(1,parseFloat($('timeoutH').value)||24);
+    await checkOpenTrades(data.symbol.replace('USDT',''),data,highNow,lowNow,timeoutH);
+
+    if(st.state==='watching_long'){
+      if(!longActive){
+        st.state='idle';
+      }else if(touchLong && volumeOk){
+        const snap=orderSnapshot('LONG',data,r15,sr15,mas,riskUsd,stopDistance,marginLeverage);
+        if(snap && snap.rr>=minRR){
+          let orderOk=true;
+          if(liveTradingArmed){
+            try{
+              const res=await krakenOrder(snap.symbol,snap.dir,snap.qty,snap.stop,snap.tp,snap.marginLeverage);
+              snap.live=true;
+              snap.entryTxId=(res.txid&&res.txid[0])||null;
+              snap.takeProfitTxId=res.takeProfitTxId||null;
+              snap.takeProfitPlaced=!!res.takeProfitPlaced;
+              snap.takeProfitError=res.takeProfitError||null;
+              renderLiveOrderAlert('entry',snap,snap.entryTxId);
+            }catch(err){
+              orderOk=false;
+              notify('Ordre Kraken refusé ('+data.symbol+')',err.message);
+            }
+          }else{
+            snap.live=false;
+          }
+          if(orderOk){
+            notify('LONG — conditions réunies ('+data.symbol+')',
+              'RSI clôturé '+fmt(r15,2)+' · Entrée '+fmt(snap.entry)+' · SL '+fmt(snap.stop)+' · TP '+fmt(snap.tp)+' ('+snap.tpSource+')'+(snap.live?' · ORDRE RÉEL PLACÉ'+(snap.takeProfitPlaced?' · TP Kraken placé':' · ⚠️ TP Kraken non placé'):''));
+            addToHistory(snap);
+            st.state='cooldown_long';
+          }
+          // sinon (ordre refusé) : on reste en recherche, retente au prochain tick si les conditions tiennent toujours
+        }
+        // contact + volume OK mais R/R insuffisant (ou pas de MM du bon côté) -> on continue à surveiller
+      }
+    }else if(st.state==='watching_short'){
+      if(!shortActive){
+        st.state='idle';
+      }else if(touchShort && volumeOk){
+        const snap=orderSnapshot('SHORT',data,r15,sr15,mas,riskUsd,stopDistance,marginLeverage);
+        if(snap && snap.rr>=minRR){
+          let orderOk=true;
+          if(liveTradingArmed){
+            try{
+              const res=await krakenOrder(snap.symbol,snap.dir,snap.qty,snap.stop,snap.tp,snap.marginLeverage);
+              snap.live=true;
+              snap.entryTxId=(res.txid&&res.txid[0])||null;
+              snap.takeProfitTxId=res.takeProfitTxId||null;
+              snap.takeProfitPlaced=!!res.takeProfitPlaced;
+              snap.takeProfitError=res.takeProfitError||null;
+              renderLiveOrderAlert('entry',snap,snap.entryTxId);
+            }catch(err){
+              orderOk=false;
+              notify('Ordre Kraken refusé ('+data.symbol+')',err.message);
+            }
+          }else{
+            snap.live=false;
+          }
+          if(orderOk){
+            notify('SHORT — conditions réunies ('+data.symbol+')',
+              'RSI clôturé '+fmt(r15,2)+' · Entrée '+fmt(snap.entry)+' · SL '+fmt(snap.stop)+' · TP '+fmt(snap.tp)+' ('+snap.tpSource+')'+(snap.live?' · ORDRE RÉEL PLACÉ'+(snap.takeProfitPlaced?' · TP Kraken placé':' · ⚠️ TP Kraken non placé'):''));
+            addToHistory(snap);
+            st.state='cooldown_short';
+          }
+        }
+      }
+    }else if(st.state==='cooldown_long'){
+      if(!longActive) st.state='idle';
+    }else if(st.state==='cooldown_short'){
+      if(!shortActive) st.state='idle';
+    }
+
+    if(st.state==='idle'){
+      if(longActive){ st.state='watching_long'; }
+      else if(shortActive){ st.state='watching_short'; }
+    }
+
+    function blockReason(dir,touch,entry){
+      if(!touch) return '';
+      const reasons=[];
+      if(!volumeOk) reasons.push('volume insuffisant ('+fmt(volRatio,2)+'×, seuil '+fmt(volMult,1)+'×)');
+      const preview=pickTarget(dir,entry,mas);
+      if(!preview) reasons.push('aucune MM du bon côté');
+      else{
+        const previewRR=Math.abs(preview.tp-entry)/stopDistance;
+        if(previewRR<minRR) reasons.push('R/R insuffisant ('+fmt(previewRR,2)+' vs '+fmt(minRR,1)+' visé sur '+preview.source+')');
+      }
+      return reasons.length?' · niveau atteint, '+reasons.join(', '):'';
+    }
+
+    if(st.state==='watching_long'){
+      st.mode='watching';
+      st.label='Recherche LONG — RSI clôturé '+fmt(r15,2)+' ≤ 32 · support 15min : '+fmt(sr15.support)+
+        ' · cours : '+fmt(data.price)+blockReason('LONG',touchLong,sr15.support);
+    }else if(st.state==='watching_short'){
+      st.mode='watching';
+      st.label='Recherche SHORT — RSI clôturé '+fmt(r15,2)+' ≥ 68 · résistance 15min : '+fmt(sr15.resistance)+
+        ' · cours : '+fmt(data.price)+blockReason('SHORT',touchShort,sr15.resistance);
+    }else if(st.state==='cooldown_long'){
+      st.mode='triggered';
+      st.label='✓ LONG signalé — attente d’une sortie du RSI de la zone ≤ 32 · RSI clôturé : '+fmt(r15,2);
+    }else if(st.state==='cooldown_short'){
+      st.mode='triggered';
+      st.label='✓ SHORT signalé — attente d’une sortie du RSI de la zone ≥ 68 · RSI clôturé : '+fmt(r15,2);
+    }else{
+      st.mode='idle';
+      st.label='RSI clôturé '+fmt(r15,2)+', aucune condition en cours';
+    }
+    renderSymbolRow(sym);
+  }catch(e){
+    st.mode='error';
+    st.label='⚠️ '+e.message;
+    renderSymbolRow(sym);
+  }
+}
+
+async function watchTickAll(){
+  await Promise.allSettled(watchSymbols.map(sym=>watchTickSymbol(sym)));
+  watchNextAt=new Date(Date.now()+POLL_MS);
+  renderWatchMeta();
+}
+
+$('watchStart').onclick=async()=>{
+  if(watchSymbols.length===0){
+    $('watchMeta').innerHTML='<span class="warn">Ajoute au moins un actif avant de démarrer.</span>';
+    return;
+  }
+
+  const krakenConfigured=krakenConnectorBase()&&($('krakenToken').value||'').trim();
+  if(krakenConfigured){
+    const confirmed=confirm(
+      '⚠️ Connecteur Kraken renseigné.\n\n'+
+      'Tant que cette surveillance tourne, chaque signal confirmé placera un VRAI ordre '+
+      'au marché sur ton compte Kraken, avec un stop-loss attaché automatiquement.\n\n'+
+      'Clique OK pour démarrer en trading en direct, ou Annuler pour ne rien lancer.'
+    );
+    if(!confirmed) return;
+    liveTradingArmed=true;
+  }else{
+    liveTradingArmed=false;
+  }
+  setKrakenLiveIndicator();
+
+  watchRunning=true;
+  watchFirstCheckAt=new Date();
+  watchSymbols.forEach(sym=>{
+    watchStates[sym]={state:'idle',lastClosed15m:null,r15:null,mode:'watching',label:'Vérification en cours…'};
+    renderSymbolRow(sym);
+  });
+
+  $('watchStart').disabled=true;
+  $('watchStop').disabled=false;
+  $('watchAddSymbol').disabled=false; // ajouter un actif reste possible en cours de route
+  $('watchMeta').textContent='';
+
+  try{
+    if('Notification' in window && Notification.permission==='default'){
+      try{ await Notification.requestPermission(); }catch(e){}
+    }
+    await watchTickAll();
+    watchTimer=setInterval(watchTickAll,POLL_MS);
+  }catch(err){
+    $('watchMeta').innerHTML='<span class="warn">Erreur au démarrage : '+err.message+'</span>';
+    watchRunning=false;
+    liveTradingArmed=false;
+    setKrakenLiveIndicator();
+    $('watchStart').disabled=false;
+    $('watchStop').disabled=true;
+  }
+};
+
+$('watchStop').onclick=()=>{
+  clearInterval(watchTimer);
+  watchTimer=null;
+  watchRunning=false;
+  liveTradingArmed=false;
+  setKrakenLiveIndicator();
+  watchFirstCheckAt=null;
+  watchNextAt=null;
+  watchSymbols.forEach(sym=>{
+    watchStates[sym].mode='idle';
+    watchStates[sym].label='Surveillance arrêtée';
+    renderSymbolRow(sym);
+  });
+  $('watchStart').disabled=false;
+  $('watchStop').disabled=true;
+  $('watchMeta').innerHTML='';
+};
+
+// Actif par défaut pour démarrer plus vite
+addWatchSymbol('BTC');
+
+
+
+function setKrakenStatus(mode,text){
+  const box=$('krakenStatus');
+  box.className='watchbox '+mode;
+  $('krakenStatusLabel').textContent=text;
+}
+function setKrakenLiveIndicator(){
+  const el=$('krakenLiveIndicator');
+  if(!el) return;
+  if(liveTradingArmed){
+    el.textContent='🔴 Trading en direct : ARMÉ — de vrais ordres seront placés';
+    el.className='small warn';
+  }else{
+    el.textContent='Trading en direct : désarmé';
+    el.className='small';
+  }
+}
+
+let liveAlertTimer=null;
+// kind: 'entry' ou 'close'
+function renderLiveOrderAlert(kind,snap,txid){
+  const el=$('liveOrderAlert');
+  if(!el) return;
+  clearTimeout(liveAlertTimer);
+
+  if(kind==='entry'){
+    el.innerHTML=`<div class="card alertcard">
+      <div class="legend">🔴 ORDRE RÉEL PLACÉ — ENTRÉE</div>
+      <div class="signal">${snap.dir} — ${snap.symbol}</div>
+      <div class="rows">
+        <dt>Heure</dt><dd>${new Date().toLocaleTimeString('fr-FR')}</dd>
+        <dt>Entrée (visée)</dt><dd>${fmt(snap.entry)}</dd>
+        <dt>Stop-loss attaché</dt><dd>${fmt(snap.stop)}</dd>
+        <dt>Take-profit visé</dt><dd>${fmt(snap.tp)} (${snap.tpSource})</dd>
+        <dt>Take-profit Kraken</dt><dd>${snap.takeProfitTxId||'—'}${snap.takeProfitError?' ⚠️ '+snap.takeProfitError:''}</dd>
+        <dt>Quantité</dt><dd class="accent">${fmt(snap.qty,6)}</dd>
+        <dt>Txid Kraken</dt><dd>${txid||'—'}</dd>
+      </div>
+    </div>`;
+  }else{
+    el.innerHTML=`<div class="card alertcard">
+      <div class="legend">🔴 ORDRE RÉEL PLACÉ — CLÔTURE (TAKE-PROFIT)</div>
+      <div class="signal">${snap.dir} — ${snap.symbol}</div>
+      <div class="rows">
+        <dt>Heure</dt><dd>${new Date().toLocaleTimeString('fr-FR')}</dd>
+        <dt>Prix de clôture visé</dt><dd>${fmt(snap.tp)}</dd>
+        <dt>Txid Kraken</dt><dd>${txid||'—'}</dd>
+      </div>
+    </div>`;
+  }
+  // La carte reste affichée 10 minutes puis se vide toute seule, pour ne pas laisser
+  // une vieille confirmation traîner indéfiniment à l'écran.
+  liveAlertTimer=setTimeout(()=>{ el.innerHTML=''; },600000);
+}
+
+// ---------- KRAKEN REMOTE CONNECTOR ----------
+// Seule l'URL du connecteur est mémorisée (pratique, sans risque) ;
+// le token n'est jamais sauvegardé, il faut le ressaisir à chaque session.
+(function(){
+  const u=localStorage.getItem('td_kraken_worker_url');
+  if(u) $('krakenUrl').value=u;
+  $('krakenUrl').addEventListener('change',()=>localStorage.setItem('td_kraken_worker_url',$('krakenUrl').value.trim()));
+})();
+
+function krakenConnectorBase(){
+  return ($('krakenUrl').value||'').trim().replace(/\/+$/,'');
+}
+function krakenClientHeaders(){
+  const token=($('krakenToken').value||'').trim();
+  return token ? {'X-Trade-Token':token} : {};
+}
+async function krakenRemote(path){
+  const base=krakenConnectorBase();
+  if(!base) throw new Error('Renseigne l’URL du connecteur Cloudflare.');
+  const r=await fetch(base+path,{cache:'no-store',headers:krakenClientHeaders()});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error||('HTTP '+r.status));
+  return data;
+}
+async function krakenRemotePost(path,bodyObj){
+  const base=krakenConnectorBase();
+  if(!base) throw new Error('Renseigne l’URL du connecteur Cloudflare.');
+  const r=await fetch(base+path,{
+    method:'POST',
+    cache:'no-store',
+    headers:{...krakenClientHeaders(),'Content-Type':'application/json'},
+    body:JSON.stringify(bodyObj)
+  });
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(data.error||('HTTP '+r.status));
+  return data;
+}
+async function krakenOrder(symbol,dir,volume,stopPrice,takeProfit,marginLeverage){
+  return krakenRemotePost('/order',{symbol,dir,volume:String(volume),stopPrice:String(stopPrice),takeProfit:String(takeProfit),leverage:String(marginLeverage||2)});
+}
+async function krakenCancelExits(symbol,tpTxId,cancelStopLosses){
+  const txids=tpTxId?[tpTxId]:[];
+  return krakenRemotePost('/cancel-exits',{symbol,txids,cancelStopLosses:!!cancelStopLosses});
+}
+async function krakenAddTakeProfit(symbol,dir,volume,takeProfit,marginLeverage){
+  return krakenRemotePost('/add-tp',{symbol,dir,volume:String(volume),takeProfit:String(takeProfit),leverage:String(marginLeverage||2)});
+}
+async function krakenClose(symbol,dir,volume,marginLeverage){
+  return krakenRemotePost('/close',{symbol,dir,volume:String(volume),leverage:String(marginLeverage||2)});
+}
+
+// Déclenchement manuel d'un ordre réel, indépendant du RSI/volume/surveillance —
+// pour tester le connecteur ou rattraper un setup que la surveillance n'a pas capté.
+async function placeManualKrakenOrder(s){
+  const out=$('krakenTestOrderOutput');
+  const base=krakenConnectorBase();
+  if(!base||!($('krakenToken').value||'').trim()){
+    out.innerHTML='<span class="warn">Renseigne d\'abord l\'URL et le token Kraken en haut de page.</span>';
+    return;
+  }
+  const symbol=s.data.symbol.replace('USDT','');
+  const confirmed=confirm(
+    '⚠️ Ordre RÉEL, déclenché manuellement (hors surveillance automatique).\n\n'+
+    s.dir+' '+symbol+' — entrée ≈ '+fmt(s.entry)+', stop '+fmt(s.stop)+', TP '+fmt(s.tp)+', quantité '+fmt(s.qty,6)+(s.dir==='SHORT'?' · marge '+fmt(s.marginLeverage,0)+'×':'')+'.\n\n'+
+    'Continuer ?'
+  );
+  if(!confirmed) return;
+
+  out.textContent='Envoi de l\'ordre…';
+  try{
+    const res=await krakenOrder(symbol,s.dir,s.qty,s.stop,s.tp,s.marginLeverage);
+    const txid=(res.txid&&res.txid[0])||null;
+    const takeProfitTxId=res.takeProfitTxId||null;
+    const snap={
+      dir:s.dir,symbol,price:s.data.price,r15:s.r15,entry:s.entry,stop:s.stop,tp:s.tp,tpSource:s.tpSource,
+      riskUsd:s.riskUsd,marginLeverage:s.marginLeverage,riskPerUnit:s.riskPerUnit,qty:s.qty,rr:s.rr,ts:Date.now(),
+      live:true,entryTxId:txid,takeProfitTxId, takeProfitPlaced:!!res.takeProfitPlaced, takeProfitError:res.takeProfitError||null,manual:true
+    };
+    addToHistory(snap);
+    renderLiveOrderAlert('entry',snap,txid);
+    out.innerHTML='<span class="good">✓ Ordre envoyé — txid '+(txid||'—')+'. Ajouté à l\'historique (suivi TP/SL comme un signal normal).</span>';
+  }catch(err){
+    out.innerHTML='<span class="warn">✕ Ordre refusé : '+err.message+'</span>';
+  }
+}
+
+$('krakenConnect').onclick=async()=>{
+  $('krakenOutput').textContent='Test en cours…';
+  setKrakenStatus('watching','Connexion…');
+  try{
+    const data=await krakenRemote('/status');
+    setKrakenStatus('triggered','✓ Connecteur actif');
+    $('krakenOutput').textContent=(data.message||'Connexion OK')+' — '+new Date().toLocaleTimeString('fr-FR');
+  }catch(e){
+    setKrakenStatus('error','Connexion impossible');
+    $('krakenOutput').innerHTML='⚠️ '+e.message;
+  }
+};
+$('krakenBalance').onclick=async()=>{
+  $('krakenOutput').textContent='Lecture du compte…';
+  try{
+    const data=await krakenRemote('/balance');
+    const entries=Object.entries(data.result||{});
+    $('krakenOutput').innerHTML=entries.length
+      ? '<b>Solde Kraken :</b><br>'+entries.map(([k,v])=>`${k} : ${v}`).join('<br>')
+      : 'Connexion réussie, aucun solde retourné.';
+    setKrakenStatus('triggered','✓ Compte Kraken accessible');
+  }catch(e){
+    setKrakenStatus('error','Lecture du compte impossible');
+    $('krakenOutput').textContent='⚠️ '+e.message;
+  }
+};
+
+
+// ---------- V7 : ANALYSE DE LA SEMAINE ----------
+let weeklyState=null;
+let weeklyPlan=null;
+
+function ema(cs, period){
+  if(cs.length<period) return null;
+  const k=2/(period+1);
+  let e=cs.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  for(let i=period;i<cs.length;i++) e=cs[i]*k+e*(1-k);
+  return e;
+}
+function pctDistance(a,b){ return Math.abs(a-b)/b; }
+function structureLabel(ks){
+  const p=pivots(ks,2,2);
+  const highs=p.highs.slice(-3), lows=p.lows.slice(-3);
+  if(highs.length<2 || lows.length<2) return {label:'structure insuffisante',bias:0};
+  const hh=highs[highs.length-1].p>highs[highs.length-2].p;
+  const hl=lows[lows.length-1].p>lows[lows.length-2].p;
+  const lh=highs[highs.length-1].p<highs[highs.length-2].p;
+  const ll=lows[lows.length-1].p<lows[lows.length-2].p;
+  if(hh&&hl) return {label:'HH / HL — haussière',bias:2};
+  if(lh&&ll) return {label:'LH / LL — baissière',bias:-2};
+  return {label:'mixte / transition',bias:0};
+}
+function describeTF(name,ks){
+  const closedKs=ks.length>1?ks.slice(0,-1):ks;
+  const cs=closes(closedKs), price=cs[cs.length-1];
+  const e20=ema(cs,20),e50=ema(cs,50),e200=ema(cs,200),r=rsiWilder(cs),st=structureLabel(closedKs);
+  const prev20=ema(cs.slice(0,-5),20);
+  let score=0;
+  score += price>e20?1:-1;
+  score += e20>e50?1:-1;
+  score += e50>e200?1:-1;
+  score += e20>prev20?1:-1;
+  score += st.bias;
+  let label=score>=3?'haussière':score<=-3?'baissière':'mixte';
+  const strength=Math.min(5,Math.max(1,Math.round(Math.abs(score))));
+  return {name,price,e20,e50,e200,rsi:r,structure:st.label,score,label,strength,ks:closedKs};
+}
+function lastResistanceOrSupport(ks,price,dir){
+  const lv=nearestLevels(ks,price);
+  return dir==='LONG'?lv.resistance:lv.support;
+}
+async function loadWeekly(sym){
+  const s=sym.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const symbol=s.endsWith('USDT')?s:s+'USDT';
+  const [ticker,k1d,k4h]=await Promise.all([
+    api('/api/v3/ticker/price?symbol='+symbol),
+    api('/api/v3/klines?symbol='+symbol+'&interval=1d&limit=260'),
+    api('/api/v3/klines?symbol='+symbol+'&interval=4h&limit=260')
+  ]);
+  return {symbol,price:+ticker.price,k1d,k4h,k1dClosed:k1d.length>1?k1d.slice(0,-1):k1d,k4hClosed:k4h.length>1?k4h.slice(0,-1):k4h};
+}
+function biasFromWeekly(d,td,tf){
+  const total=td.score*1.5+tf.score;
+  if(td.label==='haussière'&&tf.label==='haussière'&&total>=5) return {bias:'LONG',strength:Math.min(5,Math.round(total)),why:'Daily et 4H alignés à la hausse.'};
+  if(td.label==='baissière'&&tf.label==='baissière'&&total<=-5) return {bias:'SHORT',strength:Math.min(5,Math.round(Math.abs(total))),why:'Daily et 4H alignés à la baisse.'};
+  if(total>=3.5) return {bias:'LONG',strength:Math.min(5,Math.round(total)),why:'Biais haussier, mais les deux horizons ne sont pas totalement alignés.'};
+  if(total<=-3.5) return {bias:'SHORT',strength:Math.min(5,Math.round(Math.abs(total))),why:'Biais baissier, mais les deux horizons ne sont pas totalement alignés.'};
+  return {bias:'NEUTRE',strength:0,why:'Structure et tendance insuffisamment alignées pour privilégier un seul sens.'};
+}
+function renderWeekly(w){
+  const b=w.bias;
+  const cls=b.bias==='LONG'?'good':b.bias==='SHORT'?'warn':'accent';
+  const score=Math.max(0,Math.min(5,b.strength));
+  $('weeklyOutput').innerHTML=`
+    <div class="bias-card">
+      <div class="legend">BIAIS DE TRAVAIL POUR LA SEMAINE</div>
+      <div class="bias-value ${cls}">${b.bias==='LONG'?'🟢 LONG':b.bias==='SHORT'?'🔴 SHORT':'⚪ NEUTRE'}</div>
+      <div class="bias-why">${b.why} ${b.bias==='LONG'?'On cherchera uniquement des configurations LONG.':b.bias==='SHORT'?'On cherchera uniquement des configurations SHORT.':'Pas de direction imposée tant que la structure ne se clarifie pas.'}</div>
+      <div class="scorebar">${[1,2,3,4,5].map(i=>`<span class="${i<=score?'on':''}"></span>`).join('')}</div>
+      <div class="small">Force heuristique : ${score}/5 · Ce n'est pas une prévision de prix.</div>
+    </div>
+    <div class="trend-grid">
+      ${weeklyTrendCard(w.daily,'DAILY — TENDANCE DE FOND')}
+      ${weeklyTrendCard(w.h4,'4H — CONFIRMATION / TIMING')}
+    </div>
+    <div class="card" style="margin-top:1rem">
+      <div class="legend">LECTURE RAPIDE</div>
+      <div class="rows">
+        <dt>Prix actuel</dt><dd>${fmt(w.price)}</dd>
+        <dt>Daily structure</dt><dd>${w.daily.structure}</dd>
+        <dt>4H structure</dt><dd>${w.h4.structure}</dd>
+        <dt>Daily EMA 20 / 50 / 200</dt><dd>${fmt(w.daily.e20)} / ${fmt(w.daily.e50)} / ${fmt(w.daily.e200)}</dd>
+        <dt>4H EMA 20 / 50 / 200</dt><dd>${fmt(w.h4.e20)} / ${fmt(w.h4.e50)} / ${fmt(w.h4.e200)}</dd>
+        <dt>Daily RSI 14</dt><dd>${fmt(w.daily.rsi,1)}</dd>
+        <dt>4H RSI 14</dt><dd>${fmt(w.h4.rsi,1)}</dd>
+      </div>
+    </div>`;
+}
+function weeklyTrendCard(t,title){
+  const c=t.label==='haussière'?'good':t.label==='baissière'?'warn':'accent';
+  return `<div class="trend-card">
+    <h3>${title}</h3>
+    <div class="signal ${c}">${t.label.toUpperCase()}</div>
+    <div class="rows">
+      <dt>Structure</dt><dd>${t.structure}</dd>
+      <dt>Prix vs EMA20</dt><dd class="${t.price>t.e20?'good':'warn'}">${t.price>t.e20?'au-dessus':'en-dessous'}</dd>
+      <dt>EMA20 vs EMA50</dt><dd class="${t.e20>t.e50?'good':'warn'}">${t.e20>t.e50?'20 > 50':'20 < 50'}</dd>
+      <dt>EMA50 vs EMA200</dt><dd class="${t.e50>t.e200?'good':'warn'}">${t.e50>t.e200?'50 > 200':'50 < 200'}</dd>
+      <dt>RSI 14</dt><dd>${fmt(t.rsi,1)}</dd>
+      <dt>Score</dt><dd>${t.score>0?'+':''}${t.score}/6</dd>
+    </div>
+  </div>`;
+}
+async function analyzeWeekly(){
+  const sym=($('symbol').value||'BTC').trim();
+  $('weeklySymbolLabel').textContent=sym.toUpperCase();
+  $('weeklyAnalyze').disabled=true;
+  $('weeklyOutput').innerHTML='<div class="card loading">Analyse Daily + 4H en cours…</div>';
+  try{
+    const d=await loadWeekly(sym);
+    const daily=describeTF('Daily',d.k1d), h4=describeTF('4H',d.k4h);
+    const bias=biasFromWeekly(d,daily,h4);
+    weeklyState={...d,daily,h4,bias};
+    window.tdWeeklyState=weeklyState;
+    renderWeekly(weeklyState);
+  }catch(e){$('weeklyOutput').innerHTML='<div class="error"><b>Analyse impossible.</b><br>'+e.message+'</div>'}
+  finally{$('weeklyAnalyze').disabled=false}
+}
+
+function weekKey(){
+  const d=new Date();
+  const onejan=new Date(d.getFullYear(),0,1);
+  const week=Math.ceil((((d-onejan)/86400000)+onejan.getDay()+1)/7);
+  return d.getFullYear()+'-W'+String(week).padStart(2,'0');
+}
+function renderWeekTradeStatus(){
+  const taken=localStorage.getItem('td_week_trade')===weekKey();
+  const box=$('weekTradeLock'); if(!box)return;
+  box.classList.toggle('taken',taken);
+  $('weekTradeStatus').textContent=taken?'Trade de la semaine déjà marqué comme pris.':'Aucun trade marqué pour cette semaine.';
+  $('weekTradeToggle').textContent=taken?'Réinitialiser le statut':'Marquer comme pris';
+}
+$('weekTradeToggle').onclick=()=>{
+  if(localStorage.getItem('td_week_trade')===weekKey()) localStorage.removeItem('td_week_trade');
+  else localStorage.setItem('td_week_trade',weekKey());
+  renderWeekTradeStatus();
+};
+function buildWeeklyPlanView(w,p){
+  const b=w.bias.bias;
+  if(b==='NEUTRE'){
+    $('weeklyPlanOutput').innerHTML='<div class="bias-card"><div class="legend">PLAN</div><div class="bias-value accent">PAS DE TRADE</div><div class="bias-why">Le biais hebdomadaire est neutre. L\'écran 3 ne force pas de direction : il attend que Daily et 4H deviennent plus cohérents.</div></div>';
+    return;
+  }
+  const price=w.price, k=w.k4hClosed, atr4=atr(k), lv4=nearestLevels(k,price), lvD=nearestLevels(w.k1dClosed,price);
+  const cs=closes(k), e20=ema(cs,20), e50=ema(cs,50);
+  const supports=[lv4.support,e20,e50].filter(v=>v<price).sort((a,b)=>b-a);
+  const resistances=[lv4.resistance,e20,e50].filter(v=>v>price).sort((a,b)=>a-b);
+  const level=b==='LONG'?(supports[0]||lv4.support):(resistances[0]||lv4.resistance);
+  const zoneHalf=atr4*0.45;
+  const zoneLow=b==='LONG'?level-zoneHalf:level;
+  const zoneHigh=b==='LONG'?level:level+zoneHalf;
+  const p4=pivots(k,2,2);
+  const lastLow=p4.lows.length?p4.lows[p4.lows.length-1].p:lv4.support;
+  const lastHigh=p4.highs.length?p4.highs[p4.highs.length-1].p:lv4.resistance;
+  const stop=b==='LONG'?Math.min(lastLow,level)-atr4*0.2:Math.max(lastHigh,level)+atr4*0.2;
+  const tp1=b==='LONG'?lvD.resistance:lvD.support;
+  weeklyPlan={bias:b,level,zoneLow,zoneHigh,stop,tp1,price,atr4};
+  const cls=b==='LONG'?'good':'warn';
+  $('weeklyPlanOutput').innerHTML=`
+    <div class="bias-card">
+      <div class="legend">DIRECTION IMPOSÉE PAR L'ÉCRAN 2</div>
+      <div class="bias-value ${cls}">${b}</div>
+      <div class="bias-why">Le plan n'essaie pas de prendre le mouvement contre la tendance. Il attend un retour du prix vers une zone 4H / moyenne avant de chercher le déclencheur.</div>
+    </div>
+    <div class="card">
+      <div class="legend">PLAN DE PULLBACK</div>
+      <div class="plan-grid">
+        <div class="plan-box"><div class="k">ZONE DE SURVEILLANCE</div><div class="v">${fmt(zoneLow)} → ${fmt(zoneHigh)}</div></div>
+        <div class="plan-box"><div class="k">NIVEAU CENTRAL</div><div class="v">${fmt(level)}</div></div>
+        <div class="plan-box"><div class="k">STOP / INVALIDATION</div><div class="v">${fmt(stop)}</div></div>
+        <div class="plan-box"><div class="k">TP1 — DAILY</div><div class="v">${fmt(tp1)}</div></div>
+        <div class="plan-box"><div class="k">PRIX ACTUEL</div><div class="v">${fmt(price)}</div></div>
+        <div class="plan-box"><div class="k">ATR 4H</div><div class="v">${fmt(atr4)}</div></div>
+      </div>
+      <div class="section">
+        <div class="legend">DÉCLENCHEUR</div>
+        <p class="small" style="margin:0">Attendre que le prix entre dans la zone, puis chercher une confirmation <b>${b==='LONG'?'haussière':'baissière'}</b> sur une clôture 1H/4H. <b>Pas d'entrée simplement parce que le prix touche la zone.</b></p>
+      </div>
+      <div class="section">
+        <div class="legend">LAISSER COURIR</div>
+        <p class="small" style="margin:0">Après TP1, le principe est de conserver le reste tant que la structure 4H reste dans le sens du trade. Une sortie possible est une clôture 4H qui casse le dernier swing important ou la moyenne courte utilisée comme support/résistance.</p>
+      </div>
+    </div>`;
+}
+async function buildWeeklyPlan(){
+  $('buildWeeklyPlan').disabled=true;
+  $('weeklyPlanOutput').innerHTML='<div class="card loading">Construction du plan…</div>';
+  try{
+    if(!weeklyState) await analyzeWeekly();
+    if(!weeklyState) throw new Error('Analyse hebdomadaire indisponible.');
+    // Refresh once so the plan is not built from stale levels.
+    const d=await loadWeekly(weeklyState.symbol.replace('USDT',''));
+    weeklyState={...d,daily:describeTF('Daily',d.k1d),h4:describeTF('4H',d.k4h)};
+    weeklyState.bias=biasFromWeekly(d,weeklyState.daily,weeklyState.h4);
+    window.tdWeeklyState=weeklyState;
+    buildWeeklyPlanView(weeklyState,weeklyPlan);
+  }catch(e){$('weeklyPlanOutput').innerHTML='<div class="error"><b>Plan impossible.</b><br>'+e.message+'</div>'}
+  finally{$('buildWeeklyPlan').disabled=false;renderWeekTradeStatus();}
+}
+
+// ---------- V7 : NAVIGATION ----------
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));
+  document.querySelectorAll('.screen-nav button').forEach(b=>b.classList.toggle('active',b.dataset.screen===id));
+  if(id==='screen2') $('weeklySymbolLabel').textContent=($('symbol').value||'BTC').trim().toUpperCase();
+  if(id==='screen3') renderWeekTradeStatus();
+}
+document.querySelectorAll('.screen-nav button').forEach(btn=>btn.onclick=()=>showScreen(btn.dataset.screen));
+$('weeklyAnalyze').onclick=analyzeWeekly;
+$('buildWeeklyPlan').onclick=buildWeeklyPlan;
+renderWeekTradeStatus();
+
+</script>
+
+<div style="max-width:1560px;width:100%;margin:0 auto;padding:0 1.5rem 2rem;color:var(--dim);font-size:.72rem;line-height:1.5">
+  Prototype : le risque est saisi en USD. Le prix Binance étant coté en USDT, le calcul de taille traite ici USDT ≈ USD.
+</div>
+
+<div style="max-width:1560px;width:100%;margin:0 auto;padding:0 1.5rem 2rem;color:var(--dim);font-size:.72rem;line-height:1.5">
+  V7 : Kraken est accédé via un connecteur Cloudflare. Le SL est attaché à l’entrée et le TP est placé comme ordre Kraken séparé. L'HTML ne contient ni API key ni clé privée.
+</div>
+</body>
+</html>
