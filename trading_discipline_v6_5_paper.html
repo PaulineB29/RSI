@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trading Discipline V6.5 — Paper Trading</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#0d1210;--panel:#151c19;--panel2:#101613;--line:#29332f;--ink:#e8ede9;--dim:#8b9892;--accent:#d4a24e;--green:#70b07f;--red:#c9634a;--blue:#78a9c9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,Arial,sans-serif}
+.wrap{max-width:1050px;margin:auto;padding:28px 18px 60px}h1{font-size:24px;margin:0 0 5px}.sub{color:var(--dim);font-size:13px;margin-bottom:22px}
+.card{background:var(--panel);border:1px solid var(--line);padding:18px;margin-bottom:14px}.title{font:11px monospace;color:var(--accent);letter-spacing:.08em;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.full{grid-column:1/-1}label{display:block;color:var(--dim);font-size:12px;margin-bottom:5px}
+input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);padding:10px;font:14px monospace}button{background:var(--accent);border:0;padding:10px 14px;font-weight:700;cursor:pointer}button.secondary{background:var(--panel2);border:1px solid var(--line);color:var(--ink)}button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;gap:8px;margin-top:12px}.status{padding:11px;background:var(--panel2);border:1px solid var(--line);font:13px monospace}.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--accent)}.dim{color:var(--dim)}
+table{width:100%;border-collapse:collapse;font:12px monospace}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--dim);font-weight:400}
+.long{color:var(--green)}.short{color:var(--red)}.paper{color:var(--blue)}
+.log{max-height:190px;overflow:auto;font:12px monospace;color:var(--dim);line-height:1.7}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Trading Discipline V6.5</h1>
+<div class="sub">Multi-actifs · stratégie automatique · paper trading uniquement</div>
+
+<div class="card">
+<div class="title">KRAKEN — CONNEXION</div>
+<div class="grid">
+<div><label>URL du Worker Cloudflare</label><input id="worker" placeholder="https://ton-worker.workers.dev"></div>
+<div><label>CLIENT_TOKEN</label><input id="token" type="password" placeholder="Ton token V5"></div>
+</div>
+<div class="actions">
+<button id="connect">Connecter Kraken</button>
+<button class="secondary" id="balance" disabled>Lire le solde</button>
+</div>
+<div id="connection" class="status" style="margin-top:12px">Non connecté</div>
+<div id="balanceOut" class="dim" style="margin-top:9px"></div>
+</div>
+
+<div class="card">
+<div class="title">SURVEILLANCE</div>
+<div class="grid">
+<div class="full"><label>Actifs (séparés par des virgules — BTC est converti en XBT pour Kraken)</label><input id="symbols" value="XRP/USD, BTC/USD"></div>
+<div><label>Risque fictif par trade (USD)</label><input id="risk" type="number" value="100" min="1"></div>
+<div><label>ATR ×</label><input id="atrMult" type="number" value="1.5" step=".1"></div>
+<div><label>Positions max par sens (pyramiding)</label><input id="pyramidMax" type="number" value="3" min="1"></div>
+<div><label>Espacement entre entrées (× ATR)</label><input id="pyramidSpacing" type="number" value="0.5" step=".1" min="0"></div>
+<div><label>Risque total max par actif (USD)</label><input id="riskCap" type="number" value="400" min="1"></div>
+<div class="full"><label>Take Profit</label><input value="LONG RSI ≥ 68 puis pic · SHORT RSI ≤ 32 puis creux" disabled></div>
+</div>
+<div class="actions">
+<button id="start" disabled>Démarrer automatiquement</button>
+<button class="secondary" id="stop" disabled>Arrêter</button>
+</div>
+<div id="runStatus" class="status" style="margin-top:12px">En attente de connexion Kraken</div>
+<div class="dim" style="margin-top:9px;font-size:12px">
+Entrée ET sortie exigent toutes les deux un retournement RSI confirmé sur bougie clôturée (pas juste le franchissement d'un seuil) : LONG ≤ 32 puis creux pour entrer, ≥ 68 puis pic pour sortir · SHORT ≥ 68 puis pic pour entrer, ≤ 32 puis creux pour sortir · Stop : ATR × multiplicateur, vérifié à chaque minute · plusieurs entrées du même côté autorisées (pyramiding) si chacune est à un meilleur prix que la précédente, dans la limite du nombre et du risque total réglés.
+</div>
+</div>
+
+<div class="card">
+<div class="title">MARCHÉ</div>
+<table>
+<thead><tr><th>Actif</th><th>Prix</th><th>RSI 15M clôturé</th><th>ATR 15M</th><th>Zone</th><th>Analyse</th></tr></thead>
+<tbody id="marketRows"><tr><td colspan="6" class="dim">En attente</td></tr></tbody>
+</table>
+</div>
+
+<div class="card">
+<div class="title">CONTEXTE LONG TERME <span class="dim">(informatif — ne bloque aucune entrée)</span></div>
+<table>
+<thead><tr><th>Actif</th><th>RSI journalier</th><th>Structure EMA journalière</th><th>Biais EMA hebdo (20/50)</th><th>Support hebdo</th><th>Résistance hebdo</th></tr></thead>
+<tbody id="contextRows"><tr><td colspan="6" class="dim">En attente</td></tr></tbody>
+</table>
+<div class="dim" style="margin-top:9px;font-size:12px">Rafraîchi toutes les 30 minutes (journalier/hebdo bougent lentement, inutile de les refaire à chaque minute).</div>
+</div>
+
+<div class="card">
+<div class="title">PAPER TRADING — POSITIONS FICTIVES <span id="openStamp" class="dim"></span></div>
+<table>
+<thead><tr><th>Actif</th><th>Side</th><th>Entry</th><th>Prix actuel</th><th>P&L %</th><th>P&L $</th><th>Stop</th><th>TP RSI</th><th>Statut</th><th>Action</th></tr></thead>
+<tbody id="openTrades"><tr><td colspan="10" class="dim">Aucun trade</td></tr></tbody>
+</table>
+</div>
+
+<div class="card">
+<div class="title">HISTORIQUE</div>
+<table>
+<thead><tr><th>Date</th><th>Actif</th><th>Side</th><th>Entry</th><th>Stop</th><th>TP RSI</th><th>Résultat</th><th>P&L %</th><th>P&L fictif</th></tr></thead>
+<tbody id="history"><tr><td colspan="9" class="dim">Aucun trade terminé</td></tr></tbody>
+</table>
+<div class="actions"><button class="secondary" id="export">Exporter en Excel (.xlsx)</button><button class="secondary" id="reset">Vider positions + historique</button></div>
+</div>
+
+<div class="card">
+<div class="title">JOURNAL</div>
+<div id="log" class="log"></div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const HISTORY_KEY="td_v6_paper_history",STATE_KEY="td_v6_paper_open",SYM_KEY="td_v6_symstate";
+const ENTRY_LONG=32,ENTRY_SHORT=68,EXIT_LONG=68,EXIT_SHORT=32;
+let timer=null,running=false;
+const market={};
+const load=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v}catch(e){return d}};
+let symState=load(SYM_KEY,{});
+
+function log(x){const d=new Date().toLocaleTimeString("fr-FR");$("log").innerHTML=`<div>${d} — ${x}</div>`+$("log").innerHTML}
+function fmt(x,d=5){return Number(x).toLocaleString("fr-FR",{maximumFractionDigits:d})}
+function base(){return $("worker").value.trim().replace(/\/+$/,"")}
+function headers(){return {"X-Trade-Token":$("token").value.trim()}}
+async function worker(path){
+ const r=await fetch(base()+path,{headers:headers(),cache:"no-store"});
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw Error(j.error||("HTTP "+r.status));
+ return j
+}
+async function krakenPublic(path){
+ const r=await fetch("https://api.kraken.com"+path,{cache:"no-store"});
+ const j=await r.json();
+ if(j.error&&j.error.length)throw Error(j.error.join(", "));
+ return j.result;
+}
+function closes(rows){return rows.map(x=>+x[4])}
+function ema(a,n){
+ if(a.length<n)return null;
+ const k=2/(n+1);
+ let e=a.slice(0,n).reduce((x,y)=>x+y,0)/n;
+ for(let i=n;i<a.length;i++)e=a[i]*k+e*(1-k);
+ return e
+}
+function pivots(ks,left=2,right=2){
+ let lows=[],highs=[];
+ for(let i=left;i<ks.length-right;i++){
+  let lo=+ks[i][3],hi=+ks[i][2],isL=true,isH=true;
+  for(let j=i-left;j<=i+right;j++){if(j===i)continue;if(+ks[j][3]<=lo)isL=false;if(+ks[j][2]>=hi)isH=false}
+  if(isL)lows.push({p:lo,i});if(isH)highs.push({p:hi,i});
+ }
+ return{lows,highs}
+}
+function nearestLevels(ks,price){
+ const p=pivots(ks),lookback=Math.min(ks.length,120);
+ const lows=p.lows.filter(x=>x.i>=Math.max(0,ks.length-lookback)).map(x=>x.p);
+ const highs=p.highs.filter(x=>x.i>=Math.max(0,ks.length-lookback)).map(x=>x.p);
+ const supports=[...new Set(lows.filter(x=>x<price).sort((a,b)=>b-a))];
+ const resistances=[...new Set(highs.filter(x=>x>price).sort((a,b)=>a-b))];
+ return{support:supports[0]??null,resistance:resistances[0]??null}
+}
+function rsi(a,n=14){
+ if(a.length<n+1)return null;
+ let g=0,l=0;
+ for(let i=1;i<=n;i++){let x=a[i]-a[i-1];g+=Math.max(x,0);l+=Math.max(-x,0)}
+ let ag=g/n,al=l/n;
+ for(let i=n+1;i<a.length;i++){let x=a[i]-a[i-1];ag=(ag*(n-1)+Math.max(x,0))/n;al=(al*(n-1)+Math.max(-x,0))/n}
+ return al===0?100:100-100/(1+ag/al)
+}
+function atr(rows,n=14){
+ if(rows.length<n+1)return null;
+ let t=[];
+ for(let i=1;i<rows.length;i++){let h=+rows[i][2],l=+rows[i][3],p=+rows[i-1][4];t.push(Math.max(h-l,Math.abs(h-p),Math.abs(l-p)))}
+ let a=t.slice(0,n).reduce((x,y)=>x+y,0)/n;
+ for(let i=n;i<t.length;i++)a=(a*(n-1)+t[i])/n;
+ return a
+}
+
+// Clé unique d'un actif (ex. "XRP/USD" -> "XRPUSD", "BTC/USD" -> "XBTUSD") : utilisée partout pour comparer.
+function pairKey(s){return String(s).toUpperCase().replace(/[\/\-\s]/g,"").replace(/^BTC/,"XBT")}
+function parseSymbols(){
+ const seen=new Set(),out=[];
+ for(const raw of $("symbols").value.split(/[,;\n]+/)){
+  const label=raw.trim().toUpperCase().replace(/-/g,"/");
+  if(!label)continue;
+  const key=pairKey(label);
+  if(seen.has(key))continue;
+  seen.add(key);out.push({key,label,watch:true});
+ }
+ return out;
+}
+
+// Les anciens trades (symbole "XRP/USD") sont normalisés au chargement.
+const migrate=l=>l.map(t=>({...t,label:t.label||t.symbol,symbol:pairKey(t.symbol)}));
+const getOpen=()=>migrate(load(STATE_KEY,[]));
+const getHist=()=>migrate(load(HISTORY_KEY,[]));
+const saveOpen=x=>localStorage.setItem(STATE_KEY,JSON.stringify(x));
+const saveHist=x=>localStorage.setItem(HISTORY_KEY,JSON.stringify(x.slice(0,500)));
+const saveSym=()=>localStorage.setItem(SYM_KEY,JSON.stringify(symState));
+
+const pctMove=(side,entry,p)=>(side==="LONG"?p-entry:entry-p)/entry*100;
+const sgn=(x,d=2)=>(x>=0?"+":"")+fmt(x,d);
+function liveCells(t){
+ const m=market[t.symbol];
+ if(!m||m.err)return `<td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>`;
+ const pc=pctMove(t.side,t.entry,m.price),usd=pc/100*t.entry*t.qty,c=pc>=0?"long":"short";
+ return `<td>${fmt(m.price)}</td><td class="${c}">${sgn(pc)} %</td><td class="${c}">${sgn(usd)} $</td>`;
+}
+function tpLabel(side){return side==="LONG"?"RSI ≥ "+EXIT_LONG:"RSI ≤ "+EXIT_SHORT}
+
+function render(){
+ const open=getOpen(),hist=getHist();
+ $("openTrades").innerHTML=open.length?open.map(t=>`<tr>
+ <td>${t.label}</td><td class="${t.side==="LONG"?"long":"short"}">${t.side}</td>
+ <td>${fmt(t.entry)}</td>${liveCells(t)}<td>${fmt(t.stop)}</td><td>${tpLabel(t.side)}</td><td class="paper">PAPER</td>
+ <td><button class="secondary" data-close="${t.id}">Clôturer</button></td>
+ </tr>`).join(""):`<tr><td colspan="10" class="dim">Aucun trade</td></tr>`;
+ $("history").innerHTML=hist.length?hist.map(t=>`<tr>
+ <td>${new Date(t.time).toLocaleString("fr-FR")}</td><td>${t.label}</td>
+ <td class="${t.side==="LONG"?"long":"short"}">${t.side}</td>
+ <td>${fmt(t.entry)}</td><td>${fmt(t.stop)}</td><td>${tpLabel(t.side)}</td>
+ <td class="${t.pnl>=0?"long":"short"}">${t.result}</td>
+ <td class="${t.pnl>=0?"long":"short"}">${sgn(pctMove(t.side,t.entry,t.exit))} %</td>
+ <td class="${t.pnl>=0?"long":"short"}">${t.pnl>=0?"+":""}${fmt(t.pnl,2)} $</td>
+ </tr>`).join(""):`<tr><td colspan="9" class="dim">Aucun trade terminé</td></tr>`;
+}
+
+// Clôture manuelle "papier" — simule un ordre limite : tu choisis le prix de clôture
+// (par défaut le dernier prix connu), la position se ferme immédiatement à ce prix.
+function closeManual(id){
+ const open=getOpen(),t=open.find(x=>x.id===id);
+ if(!t)return;
+ const m=market[t.symbol];
+ const suggested=m&&!m.err?m.price:t.entry;
+ const raw=prompt(`Prix de l'ordre limite de clôture pour ${t.side} ${t.label} (entry ${fmt(t.entry)}) :`,fmt(suggested,5).replace(/\s/g,""));
+ if(raw===null)return; // annulé
+ const price=+String(raw).replace(",",".");
+ if(!isFinite(price)||price<=0){alert("Prix invalide.");return}
+ if(!confirm(`Clôturer ${t.side} ${t.label} à ${fmt(price)} ?`))return;
+
+ const pnl=(t.side==="LONG"?price-t.entry:t.entry-price)*t.qty;
+ const hist=getHist();
+ hist.unshift({...t,result:"MANUEL",exit:price,pnl,exitRsi:market[t.symbol]?.rsi??null,exitReason:"Clôture manuelle (limite)",resolved:Date.now()});
+ saveHist(hist);
+ saveOpen(open.filter(x=>x.id!==id));
+ log(`MANUEL ${t.side} — ${t.label} — Clôture manuelle (limite) — exit ${fmt(price)} — P&L fictif ${pnl>=0?"+":""}${fmt(pnl,2)} $`);
+ render();
+}
+
+// --- Contexte long terme (journalier/hebdo), informatif, rafraîchi toutes les 30 min ---
+const context={};
+const CONTEXT_REFRESH_MS=30*60*1000;
+
+async function refreshContext(s){
+ const c=context[s.key];
+ if(c&&Date.now()-c.fetchedAt<CONTEXT_REFRESH_MS)return c;
+ try{
+  const [dRes,wRes]=await Promise.all([
+   krakenPublic(`/0/public/OHLC?pair=${encodeURIComponent(s.key)}&interval=1440`),
+   krakenPublic(`/0/public/OHLC?pair=${encodeURIComponent(s.key)}&interval=10080`)
+  ]);
+  const dk=Object.keys(dRes).find(x=>x!=="last"),wk=Object.keys(wRes).find(x=>x!=="last");
+  const dClosed=dRes[dk].slice(0,-1),wClosed=wRes[wk].slice(0,-1); // on écarte la bougie en cours, pas encore clôturée
+  const dCloses=closes(dClosed),wCloses=closes(wClosed);
+  const dPrice=dCloses[dCloses.length-1],wPrice=wCloses[wCloses.length-1];
+
+  const dRsi=rsi(dCloses);
+  const dEma={e10:ema(dCloses,10),e20:ema(dCloses,20),e50:ema(dCloses,50),e100:ema(dCloses,100),e200:ema(dCloses,200)};
+  const vals=Object.values(dEma).filter(v=>v!=null);
+  const above=vals.filter(v=>dPrice>v).length;
+  const dailyStruct=vals.length===0?"—":above===vals.length?"Haussier (prix > toutes les EMA)":above===0?"Baissier (prix < toutes les EMA)":`Mixte (${above}/${vals.length} EMA en dessous)`;
+
+  const wEma20=ema(wCloses,20),wEma50=ema(wCloses,50);
+  const weekBias=(wEma20!=null&&wEma50!=null)?(wEma20>wEma50?"Haussier (EMA20 > EMA50)":"Baissier (EMA20 < EMA50)"):"—";
+  const wLevels=nearestLevels(wClosed,wPrice);
+
+  context[s.key]={label:s.label,dailyRsi:dRsi,dailyStruct,weekBias,weekSupport:wLevels.support,weekResistance:wLevels.resistance,fetchedAt:Date.now()};
+ }catch(e){
+  context[s.key]={label:s.label,err:e.message,fetchedAt:Date.now()};
+ }
+ return context[s.key];
+}
+
+function renderContext(){
+ const rows=Object.values(context);
+ $("contextRows").innerHTML=rows.length?rows.map(c=>c.err
+  ?`<tr><td>${c.label}</td><td colspan="5" class="bad">${c.err}</td></tr>`
+  :`<tr><td>${c.label}</td><td>${c.dailyRsi!=null?fmt(c.dailyRsi,2):"—"}</td><td>${c.dailyStruct}</td><td>${c.weekBias}</td><td>${c.weekSupport!=null?fmt(c.weekSupport):"—"}</td><td>${c.weekResistance!=null?fmt(c.weekResistance):"—"}</td></tr>`
+ ).join(""):`<tr><td colspan="6" class="dim">En attente</td></tr>`;
+}
+
+function renderMarket(){
+ const rows=Object.values(market);
+ $("marketRows").innerHTML=rows.length?rows.map(m=>m.err
+  ?`<tr><td>${m.label}</td><td colspan="5" class="bad">${m.err}</td></tr>`
+  :`<tr><td>${m.label}</td><td>${fmt(m.price)}</td><td>${fmt(m.rsi,2)}</td><td>${fmt(m.atr)}</td><td class="${m.zoneCls}">${m.zone}</td><td>${m.time}</td></tr>`
+ ).join(""):`<tr><td colspan="6" class="dim">En attente</td></tr>`;
+}
+
+function paperTrade(k,label,side,p,sl){
+ const risk=Math.max(1,+$("risk").value||100);
+ const qty=risk/Math.abs(p-sl);
+ const o=getOpen();
+ o.push({id:Date.now()+k,symbol:k,label,side,entry:p,stop:sl,tpRsi:side==="LONG"?EXIT_LONG:EXIT_SHORT,qty,risk,time:Date.now()});
+ saveOpen(o);render();
+ log(`PAPER ${side} ${label} déclenché — entry ${fmt(p)} / SL ${fmt(sl)} / TP ${tpLabel(side)}`);
+}
+
+// Stop : vérifié à chaque passage (prix). TP RSI : seulement quand une nouvelle bougie 15M vient de se clôturer.
+function resolve(k,price,rs,isNew,turnedUp,turnedDown){
+ const o=getOpen(),remain=[],hist=getHist();let changed=false;
+ for(const t of o){
+  if(t.symbol!==k){remain.push(t);continue}
+  let result=null,exit=null,reason=null;
+  if((t.side==="LONG"&&price<=t.stop)||(t.side==="SHORT"&&price>=t.stop)){
+   result="SL";exit=t.stop;reason="Stop ATR";
+  // TP : comme à l'entrée, on attend que le RSI ait pivoté (pic pour un LONG, creux pour
+  // un SHORT) une fois dans la zone de sortie — pas juste le premier contact avec le seuil.
+  }else if(isNew&&((t.side==="LONG"&&rs>=EXIT_LONG&&turnedDown)||(t.side==="SHORT"&&rs<=EXIT_SHORT&&turnedUp))){
+   result="TP";exit=price;reason=tpLabel(t.side)+" (retourné)";
+  }
+  if(result){
+   const pnl=(t.side==="LONG"?exit-t.entry:t.entry-exit)*t.qty;
+   hist.unshift({...t,result,exit,pnl,exitRsi:rs,exitReason:reason,resolved:Date.now()});
+   changed=true;
+   log(`${result} ${t.side} — ${t.label} — ${reason} — exit ${fmt(exit)} — RSI ${fmt(rs,2)} — P&L fictif ${pnl>=0?"+":""}${fmt(pnl,2)} $`);
+  }else remain.push(t);
+ }
+ if(changed){saveOpen(remain);saveHist(hist);render()}
+}
+
+async function cycleSymbol(s){
+ try{
+  const result=await krakenPublic(`/0/public/OHLC?pair=${encodeURIComponent(s.key)}&interval=15`);
+  const rk=Object.keys(result).find(x=>x!=="last");
+  if(!rk)throw Error("Paire introuvable");
+  const rows=result[rk];
+  if(rows.length<210)throw Error("Pas assez de bougies");
+  const closed=rows.slice(0,-1),price=+rows[rows.length-1][4];
+  const rs=rsi(closes(closed)),a=atr(closed),ts=closed[closed.length-1][0];
+  const st=symState[s.key]||(symState[s.key]={last:null,prevRsi:null,turned:false});
+  const isNew=ts!==st.last;
+
+  // Retournement RSI (règle 1) : calculé une seule fois par bougie clôturée,
+  // réutilisé à la fois pour l'entrée et pour le take-profit.
+  const turnedUp=isNew&&st.prevRsi!=null&&rs>st.prevRsi;
+  const turnedDown=isNew&&st.prevRsi!=null&&rs<st.prevRsi;
+
+  resolve(s.key,price,rs,isNew,turnedUp,turnedDown);
+
+  let noteZone="";
+  if(isNew){
+   const side=(rs<=ENTRY_LONG&&turnedUp)?"LONG":(rs>=ENTRY_SHORT&&turnedDown)?"SHORT":null;
+
+   if(s.watch&&side){
+    const mult=Math.max(.1,+$("atrMult").value||1.5);
+    const entry=price,stop=side==="LONG"?entry-a*mult:entry+a*mult;
+
+    // Règle 5 — pyramiding : plusieurs entrées du même côté possibles, mais chacune
+    // doit être à un meilleur prix que la précédente (espacement mini en × ATR),
+    // plafonnées en nombre et en risque total sur cet actif.
+    const sameAsset=getOpen().filter(t=>t.symbol===s.key);
+    const sameSide=sameAsset.filter(t=>t.side===side);
+    const maxPos=Math.max(1,+$("pyramidMax").value||3);
+    const spacing=Math.max(0,+$("pyramidSpacing").value||0.5);
+    const riskCap=Math.max(0,+$("riskCap").value||400);
+    const risk=Math.max(1,+$("risk").value||100);
+    const usedRisk=sameAsset.reduce((x,t)=>x+t.risk,0);
+
+    let allowed=sameSide.length<maxPos&&(usedRisk+risk)<=riskCap;
+    if(allowed&&sameSide.length){
+     const best=side==="LONG"?Math.min(...sameSide.map(t=>t.entry)):Math.max(...sameSide.map(t=>t.entry));
+     allowed=side==="LONG"?entry<=best-spacing*a:entry>=best+spacing*a;
+    }
+
+    if(allowed){
+     paperTrade(s.key,s.label,side,entry,stop);
+    }else{
+     noteZone=" (bloqué : pyramiding/risque)";
+     log(`Signal ${side} ${s.label} ignoré — pyramiding/risque max atteint (entry ${fmt(entry)})`);
+    }
+   }
+   st.turned=turnedUp||turnedDown;
+   st.prevRsi=rs;
+   st.last=ts;   // mis à jour à chaque nouvelle bougie, position ouverte ou non
+   saveSym();
+  }
+
+  const zone=(rs<=ENTRY_LONG?"LONG":rs>=ENTRY_SHORT?"SHORT":"neutre")+(rs<=ENTRY_LONG||rs>=ENTRY_SHORT?(st.turned?" (retourné)":" (pas encore retourné)"):"")+noteZone;
+  market[s.key]={label:s.label,price,rsi:rs,atr:a,zone,zoneCls:rs<=ENTRY_LONG?"long":rs>=ENTRY_SHORT?"short":"dim",time:new Date().toLocaleTimeString("fr-FR")};
+ }catch(e){
+  market[s.key]={label:s.label,err:e.message};
+  log(`<span class="bad">Erreur ${s.label}: ${e.message}</span>`);
+ }
+}
+
+async function cycle(){
+ const map=new Map(parseSymbols().map(s=>[s.key,s]));
+ // Un actif retiré de la liste reste suivi tant qu'il a une position ouverte (stop et TP), sans nouvelle entrée.
+ for(const t of getOpen())if(!map.has(t.symbol))map.set(t.symbol,{key:t.symbol,label:t.label,watch:false});
+ for(const k of Object.keys(market))if(!map.has(k))delete market[k];
+ for(const k of Object.keys(context))if(!map.has(k))delete context[k];
+ await Promise.allSettled([...map.values()].map(cycleSymbol));
+ await Promise.allSettled([...map.values()].map(refreshContext));
+ renderMarket();
+ renderContext();
+ render();
+ $("openStamp").textContent=" · prix mis à jour à "+new Date().toLocaleTimeString("fr-FR");
+}
+
+$("connect").onclick=async()=>{
+ try{
+  if(!base()||!$("token").value.trim())throw Error("Renseigne l'URL du Worker et le CLIENT_TOKEN.");
+  const d=await worker("/status");
+  $("connection").innerHTML=`<span class="ok">✓ Kraken connecté</span> — ${d.message||"Worker actif"}`;
+  $("balance").disabled=false;$("start").disabled=false;
+  localStorage.setItem("td_v6_worker",base());
+  log("Connexion Kraken validée.");
+ }catch(e){$("connection").innerHTML=`<span class="bad">✕ ${e.message}</span>`}
+}
+$("balance").onclick=async()=>{
+ try{const d=await worker("/balance"),r=d.result||{};$("balanceOut").innerHTML=Object.entries(r).map(([k,v])=>`${k}: <b>${v}</b>`).join(" · ")}
+ catch(e){$("balanceOut").innerHTML=`<span class="bad">${e.message}</span>`}
+}
+$("start").onclick=async()=>{
+ if(running)return;
+ if(!parseSymbols().length){log('<span class="bad">Renseigne au moins un actif.</span>');return}
+ running=true;$("start").disabled=true;$("stop").disabled=false;
+ localStorage.setItem("td_v6_symbols",$("symbols").value);
+ $("runStatus").innerHTML='<span class="ok">● Surveillance automatique active</span> — paper trading';
+ log("Surveillance démarrée. Aucun ordre réel ne sera envoyé.");
+ await cycle();timer=setInterval(cycle,60000);
+}
+$("stop").onclick=()=>{clearInterval(timer);timer=null;running=false;$("start").disabled=false;$("stop").disabled=true;$("runStatus").textContent="Surveillance arrêtée";log("Surveillance arrêtée.")}
+
+const utc=t=>t?new Date(t).toISOString().slice(0,19).replace("T"," "):"";
+$("export").onclick=()=>{
+ if(typeof XLSX==="undefined"){alert("La librairie d'export (XLSX) n'a pas pu se charger — vérifie ta connexion et réessaie.");return}
+ const h=getHist().map(t=>({"Entrée (UTC)":utc(t.time),"Sortie (UTC)":utc(t.resolved),"Actif":t.label,"Side":t.side,"Entry":t.entry,"Stop":t.stop,"Sortie":t.exit,"Résultat":t.result,"RSI sortie":t.exitRsi,"Raison":t.exitReason,"Quantité":t.qty,"Risque ($)":t.risk,"P&L (%)":+pctMove(t.side,t.entry,t.exit).toFixed(3),"P&L fictif ($)":t.pnl,"Durée (h)":t.resolved?+((t.resolved-t.time)/3600000).toFixed(2):""}));
+ const o=getOpen().map(t=>({"Entrée (UTC)":utc(t.time),"Actif":t.label,"Side":t.side,"Entry":t.entry,"Stop":t.stop,"TP":tpLabel(t.side),"Quantité":t.qty,"Risque ($)":t.risk}));
+ const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(h),"Historique");
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(o),"Positions ouvertes");
+ XLSX.writeFile(wb,"paper-trading-"+new Date().toISOString().slice(0,16).replace(/[:T]/g,"-")+".xlsx");
+}
+
+$("reset").onclick=()=>{
+ const nOpen=getOpen().length,nHist=getHist().length;
+ if(!confirm(`Vider ${nOpen} position(s) ouverte(s) et ${nHist} trade(s) dans l'historique ? Pense à exporter en Excel avant si tu veux garder une trace. Cette action est irréversible.`))return;
+ saveOpen([]);
+ saveHist([]);
+ render();
+ log("Historique et positions ouvertes vidés manuellement.");
+}
+
+// Les boutons "Clôturer" sont recréés à chaque render() (innerHTML), donc on écoute une
+// seule fois sur le tableau parent plutôt que sur chaque bouton (délégation d'événement).
+$("openTrades").addEventListener("click",e=>{
+ const btn=e.target.closest("[data-close]");
+ if(!btn)return;
+ closeManual(+btn.dataset.close);
+});
+
+$("worker").value=localStorage.getItem("td_v6_worker")||"";
+$("symbols").value=localStorage.getItem("td_v6_symbols")||"XRP/USD, BTC/USD";
+render();renderMarket();
+</script>
+</body>
+</html>
