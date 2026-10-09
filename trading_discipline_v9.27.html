@@ -1,0 +1,1134 @@
+<!-- Trading Discipline — dashboard — v9.27 -->
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Trading Discipline v9.27 — Tableau de bord</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#0d1210;--panel:#151c19;--panel2:#101613;--line:#29332f;--ink:#e8ede9;--dim:#8b9892;--accent:#d4a24e;--green:#70b07f;--red:#c9634a;--blue:#78a9c9}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,Arial,sans-serif}
+.wrap{max-width:1080px;margin:auto;padding:28px 18px 60px}h1{font-size:24px;margin:0 0 5px}.sub{color:var(--dim);font-size:13px;margin-bottom:22px}
+.card{background:var(--panel);border:1px solid var(--line);padding:18px;margin-bottom:14px}.title{font:11px monospace;color:var(--accent);letter-spacing:.08em;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.full{grid-column:1/-1}label{display:block;color:var(--dim);font-size:12px;margin-bottom:5px}
+input{width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);padding:10px;font:14px monospace}button{background:var(--accent);border:0;padding:10px 14px;font-weight:700;cursor:pointer}button.secondary{background:var(--panel2);border:1px solid var(--line);color:var(--ink)}button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.status{padding:11px;background:var(--panel2);border:1px solid var(--line);font:13px monospace}.ok{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--accent)}.dim{color:var(--dim)}
+table{width:100%;border-collapse:collapse;font:12px monospace}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--dim);font-weight:400}
+.long{color:var(--green)}.short{color:var(--red)}.paper{color:var(--blue)}
+.log{max-height:190px;overflow:auto;font:12px monospace;color:var(--dim);line-height:1.7}
+.subsection{border:1px solid var(--line);margin-bottom:9px}
+.subtitle{padding:10px 12px;font:12px monospace;color:var(--accent);cursor:pointer;user-select:none;background:var(--panel2)}
+.subbody{padding:12px}
+@media(max-width:700px){.grid{grid-template-columns:1fr}.full{grid-column:auto}}
+#toast{position:fixed;right:18px;bottom:18px;background:var(--panel);border:1px solid var(--green);color:var(--ink);padding:12px 16px;font:13px monospace;box-shadow:0 2px 10px rgba(0,0,0,.4);opacity:0;transform:translateY(8px);transition:opacity .25s,transform .25s;pointer-events:none;z-index:999}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.bad{border-color:var(--red)}
+.macro-alert{background:var(--panel2);border:1px solid var(--accent);color:var(--ink);padding:10px 14px;margin-bottom:14px;font:13px monospace;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.macro-alert b{color:var(--accent)}
+.macro-alert button{margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--ink);padding:3px 9px;font:11px monospace;cursor:pointer}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:1000;padding:16px}
+.modal-overlay.show{display:flex}
+.modal-box{background:var(--panel);border:1px solid var(--line);padding:18px;max-width:480px;width:100%}
+.modal-box h3{margin:0 0 10px;font:13px monospace;color:var(--accent);font-weight:400}
+.modal-box textarea{width:100%;min-height:120px;background:var(--bg);border:1px solid var(--line);color:var(--ink);padding:9px;font:13px monospace;resize:vertical}
+.journal-cell{max-width:220px;cursor:pointer;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.journal-cell:hover{color:var(--ink)}
+#bdFilterMacro.active,#bdFilterBadDay.active{background:var(--accent);border-color:var(--accent);color:var(--panel2)}
+.modal-box label.tag-check{display:flex;align-items:center;gap:6px;margin-top:10px;font:12px monospace;color:var(--dim);cursor:pointer}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Trading Discipline v9.27</h1>
+<div class="sub">Moteur 24h/24 côté Worker (Cron + D1) — cette page n'est qu'un tableau de bord, elle ne calcule plus rien</div>
+<div id="macroBanner" style="display:none"></div>
+
+<div class="card">
+<div class="title">KRAKEN — CONNEXION</div>
+<div class="grid">
+<div><label>URL du Worker Cloudflare</label><input id="worker" placeholder="https://ton-worker.workers.dev"></div>
+<div><label>CLIENT_TOKEN</label><input id="token" type="password" placeholder="Ton token"></div>
+</div>
+<div class="actions">
+<button id="connect">Connecter</button>
+<button class="secondary" id="balance" disabled>Lire le solde</button>
+<button class="secondary" id="fees" disabled>Voir mes frais actuels</button>
+<button class="secondary" id="importOld" disabled title="Reprend les positions/historique d'une ancienne version V6/V7 enregistrés dans ce navigateur">Importer les anciennes données de ce navigateur</button>
+<button class="secondary" id="toggleTestOrder" disabled>Test d'ordre réel</button>
+</div>
+<div id="connection" class="status" style="margin-top:12px">Non connecté</div>
+<div id="balanceOut" class="dim" style="margin-top:9px"></div>
+<div id="feesOut" class="dim" style="margin-top:9px;font-size:12px"></div>
+<div id="importOut" class="dim" style="margin-top:9px;font-size:12px"></div>
+
+<div id="testOrderSection" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+<label>Test d'ordre réel (≈1 USD, indépendant des signaux)</label>
+<div class="grid" style="margin-top:5px">
+<div><input id="testSymbol" value="BTC" placeholder="BTC ou XRP"></div>
+<div class="actions" style="margin-top:0">
+<button class="secondary" id="testLong" disabled>Tester LONG</button>
+<button class="secondary" id="testShort" disabled>Tester SHORT</button>
+</div>
+</div>
+<div id="testOrderOut" class="dim" style="margin-top:9px;font-size:12px"></div>
+</div>
+</div>
+
+<div class="card">
+<div class="title" id="toggleSurveillanceConfig" style="cursor:pointer;user-select:none">▸ CONFIGURER LA SURVEILLANCE <span id="busyBadge" class="dim"></span></div>
+<div id="surveillanceConfig" style="display:none">
+
+<div class="subsection">
+<div class="subtitle" data-sub="secCapital" title="Quels actifs surveiller, et combien risquer par position et au total sur chacun.">▸ Actifs &amp; capital</div>
+<div id="secCapital" class="subbody" style="display:none">
+<div class="grid">
+<div class="full"><label>Actifs (séparés par des virgules — BTC est converti en XBT pour Kraken, 6 maximum)</label><input id="symbols" value="XRP/USD, BTC/USD" disabled></div>
+<div><label>Risque par trade (USD)</label><input id="risk" type="number" value="100" min="1" disabled></div>
+<div><label>Risque total max par actif (USD)</label><input id="riskCap" type="number" value="400" min="1" disabled></div>
+<div><label title="Plafond appliqué à chaque position, papier ET réelle, quel que soit le risque calculé à partir du stop. Si ce plafond est plus bas que le risque par trade ci-dessus, c'est lui qui s'applique en pratique.">Plafond notionnel par position (USD)</label><input id="maxNotionalUsd" type="number" value="100" min="1" disabled></div>
+</div>
+</div>
+</div>
+
+<div class="subsection">
+<div class="subtitle" data-sub="secExit" title="Stop calculé à partir de la volatilité (ATR) ; sortie en gain quand le RSI confirme un retournement dans l'autre sens.">▸ Sortie de position</div>
+<div id="secExit" class="subbody" style="display:none">
+<div class="grid">
+<div><label>ATR ×</label><input id="atrMult" type="number" value="1.5" step=".1" disabled></div>
+<div class="full"><label>Take Profit</label><input value="LONG RSI ≥ 68 puis pic · SHORT RSI ≤ 32 puis creux" disabled></div>
+</div>
+</div>
+</div>
+
+<div class="subsection">
+<div class="subtitle" data-sub="secPyramid" title="Autorise plusieurs positions du même sens sur un actif, à condition que chacune soit à un meilleur prix que la précédente.">▸ Pyramiding</div>
+<div id="secPyramid" class="subbody" style="display:none">
+<div class="grid">
+<div><label>Positions max par sens (pyramiding)</label><input id="pyramidMax" type="number" value="3" min="1" disabled></div>
+<div><label>Espacement entre entrées (× ATR)</label><input id="pyramidSpacing" type="number" value="0.5" step=".1" min="0" disabled></div>
+</div>
+</div>
+</div>
+
+<div class="subsection">
+<div class="subtitle" data-sub="secLimit" title="Entrées toujours en ordre limite (jamais au marché), pour payer le tarif le plus bas — prix d'écart et délai avant annulation si l'ordre ne se remplit pas.">▸ Ordres limite</div>
+<div id="secLimit" class="subbody" style="display:none">
+<div class="grid">
+<div><label>Écart ordre limite — entrée (% du dernier prix)</label><input id="limitOffsetPct" type="number" value="0.02" step=".01" min="0" disabled></div>
+<div><label>Expiration ordre limite — entrée (min)</label><input id="limitExpiryMin" type="number" value="15" min="1" disabled></div>
+<div><label>Écart ordre limite — sortie TP (% du dernier prix)</label><input id="tpLimitOffsetPct" type="number" value="0.02" step=".01" min="0" disabled></div>
+<div><label>Expiration ordre limite — sortie TP (min)</label><input id="tpLimitExpiryMin" type="number" value="3" min="1" disabled></div>
+<div class="full dim" style="font-size:12px">Entrée en ordre limite post-only (jamais au marché) : LONG achète légèrement en dessous du dernier prix, SHORT vend légèrement au-dessus — toujours tarif maker, ou l'ordre est simplement refusé/expiré sans frais plutôt que de payer le tarif taker. La sortie sur take-profit tente la même chose (tarif maker), mais avec un délai volontairement plus court et un repli automatique en marché — soit si elle n'est pas remplie à temps, soit immédiatement si le prix revient franchir le stop pendant l'attente (le stop natif est annulé le temps de cet essai en limite). Le stop-loss lui-même reste toujours un ordre au marché (jamais limite), pour garantir qu'il s'exécute même en cas de forte baisse.</div>
+</div>
+</div>
+</div>
+
+<div class="subsection">
+<div class="subtitle" data-sub="secScale" title="Ralentit l'analyse (15min → 1h → 2h → 3h) après des stops consécutifs sur un actif, et accélère à nouveau après un gain ou une période calme.">▸ Échelle adaptative</div>
+<div id="secScale" class="subbody" style="display:none">
+<div class="grid">
+<div><label>Échelle adaptative</label>
+<select id="escalationEnabled" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);padding:10px;font:14px monospace" disabled>
+<option value="true">Activée</option><option value="false">Désactivée</option>
+</select></div>
+<div><label>Stops avant 1h (depuis 15min)</label><input id="escThreshold0" type="number" value="3" min="1" disabled></div>
+<div><label>Stops avant 2h (depuis 1h)</label><input id="escThreshold1" type="number" value="1" min="1" disabled></div>
+<div><label>Stops avant 3h (depuis 2h)</label><input id="escThreshold2" type="number" value="1" min="1" disabled></div>
+<div class="full dim" style="font-size:12px">Chaque actif a sa propre échelle de temps, qui monte après des stops consécutifs et redescend soit directement à 15min sur un take-profit, soit d'un niveau après être resté le temps d'une bougie sans stop à l'échelle courante.</div>
+</div>
+</div>
+</div>
+
+<div class="subsection">
+<div class="subtitle" data-sub="secLogic" title="Résumé en clair de comment la stratégie décide d'entrer/sortir, et de ce que change le mode réel armé.">▸ Description de la logique</div>
+<div id="secLogic" class="subbody" style="display:none">
+<div style="font-size:13px;line-height:1.9">
+<b>Entrée et sortie</b><br>
+– Retournement RSI confirmé sur bougie clôturée, jamais juste au franchissement d'un seuil<br>
+– LONG : RSI ≤ 32 puis un creux confirmé pour entrer — RSI ≥ 68 puis un pic confirmé pour sortir<br>
+– SHORT : RSI ≥ 68 puis un pic confirmé pour entrer — RSI ≤ 32 puis un creux confirmé pour sortir<br>
+– Stop : ATR × multiplicateur, vérifié chaque minute<br>
+– Pyramiding : plusieurs entrées du même côté autorisées si chacune est à un meilleur prix que la précédente, dans la limite du nombre et du risque total réglés
+</div>
+<div style="font-size:13px;line-height:1.9;margin-top:14px">
+<b>Si le trading en direct est armé</b><br>
+– Le moteur tourne en continu côté Cloudflare, 24h/24, même appareils éteints<br>
+– Ordres réels avec levier fixe 3:1<br>
+– Plafonds : 100 USD de notionnel max par position, 2 positions ouvertes max en même temps (vérifié aussi directement chez Kraken)<br>
+– Le stop-loss est toujours posé nativement chez Kraken<br>
+– Résultat d'ordre incertain (coupure réseau...) : le trading réel se désarme automatiquement, la position concernée est marquée « à vérifier manuellement » et n'est plus jamais rejouée seule
+</div>
+</div>
+</div>
+
+<div class="actions" style="margin-top:14px">
+<button class="secondary" id="saveSettings" disabled>Enregistrer les réglages</button>
+</div>
+</div>
+<div class="actions" style="margin-top:12px">
+<button id="start" disabled>Démarrer (24h/24)</button>
+<button class="secondary" id="stop" disabled>Arrêter</button>
+<button class="secondary" id="runNow" disabled title="Force un passage immédiat, sans attendre le Cron — utile pour vérifier que tout fonctionne sans patienter jusqu'à une minute">Lancer un passage maintenant</button>
+</div>
+<div id="runStatus" class="status" style="margin-top:12px">En attente de connexion</div>
+</div>
+
+<div class="card">
+<div class="title">PERFORMANCE — RÉALISÉ VS OBJECTIF</div>
+<div class="subsection">
+<div class="subtitle" id="togglePerfConfig" title="Objectif journalier affiché en comparaison, et heure à laquelle le capital réel est relevé chaque jour.">▸ Configurer le suivi de performance</div>
+<div id="perfConfig" class="subbody" style="display:none">
+<div class="grid">
+<div><label>Objectif journalier (%)</label><input id="dailyTargetPct" type="number" value="2" step=".1" min="0.01" disabled></div>
+<div><label>Heure du relevé de capital (UTC)</label><input id="snapshotHour" type="number" value="1" min="0" max="23" disabled></div>
+</div>
+<div class="actions" style="margin-top:12px">
+<button class="secondary" id="savePerfSettings" disabled>Enregistrer les réglages</button>
+</div>
+</div>
+</div>
+<div class="dim" style="font-size:12px;margin-bottom:6px">Réalisé vs objectif</div>
+<table>
+<thead><tr><th></th><th>Aujourd'hui</th><th>Semaine</th><th>Mois</th><th>Année</th></tr></thead>
+<tbody id="perfBanner">
+<tr><td>Réel</td><td colspan="4" class="dim">En attente</td></tr>
+<tr><td>Papier</td><td colspan="4" class="dim"></td></tr>
+<tr><td>Objectif</td><td colspan="4" class="dim"></td></tr>
+</tbody>
+</table>
+<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+<div class="dim" style="font-size:12px;margin-bottom:6px">Statistiques sur l'historique complet</div>
+<table>
+<thead><tr><th></th><th>Trades</th><th>Taux de réussite</th><th>Gain moyen</th><th>Perte moyenne</th><th>Plus longue série (gains)</th><th>Plus longue série (pertes)</th></tr></thead>
+<tbody id="perfStats"><tr><td colspan="7" class="dim">En attente</td></tr></tbody>
+</table>
+<div id="perfNote" class="dim" style="margin-top:9px;font-size:12px"></div>
+<div class="actions" style="margin-top:9px">
+<button class="secondary" id="snapshotNow" disabled title="Si le relevé automatique du jour n'a pas eu lieu (moteur arrêté, erreur Kraken passagère…), force sa prise maintenant. Sans effet si un relevé existe déjà pour aujourd'hui.">Relevé manuel du jour</button>
+</div>
+</div>
+<div class="subsection" style="margin-top:16px">
+<div class="subtitle" id="toggleDailyBreakdown" title="Un jour par ligne, du plus ancien jour disponible à aujourd'hui : permet de ré-additionner soi-même chaque % du bandeau ci-dessus.">▸ Détail jour par jour (vérifier le calcul)</div>
+<div id="dailyBreakdownSection" class="subbody" style="display:none">
+<table>
+<thead>
+<tr>
+ <th data-sort-bd="date" style="cursor:pointer" title="Cliquer pour trier">Date</th>
+ <th data-sort-bd="equityPrev" style="cursor:pointer" title="Cliquer pour trier">Capital</th>
+ <th data-sort-bd="pnlReal" style="cursor:pointer" title="Cliquer pour trier">P&L réel</th>
+ <th data-sort-bd="pctReal" style="cursor:pointer" title="Cliquer pour trier">% réel</th>
+ <th>Compté</th>
+ <th>Journal</th>
+</tr>
+<tr>
+ <th style="display:flex;gap:4px">
+  <input type="text" id="bdFilterDate" placeholder="jj/mm/aaaa" inputmode="numeric" maxlength="10" style="flex:1;min-width:0;background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px">
+  <button id="bdFilterMacro" title="Afficher uniquement les jours de publication macro" style="background:transparent;border:1px solid var(--line);color:var(--dim);padding:1px 6px;font-size:12px;cursor:pointer">📅</button>
+  <button id="bdFilterBadDay" title="Afficher uniquement les jours tagués 'forte baisse'" style="background:transparent;border:1px solid var(--line);color:var(--dim);padding:1px 6px;font-size:12px;cursor:pointer">📉</button>
+ </th>
+ <th></th><th></th><th></th>
+ <th><select id="bdFilterIncluded" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px"><option value="">Tous</option><option value="yes" selected>Oui</option><option value="no">Non</option></select></th>
+ <th></th>
+</tr>
+</thead>
+<tbody id="dailyBreakdown"><tr><td colspan="6" class="dim">En attente</td></tr></tbody>
+</table>
+<div class="actions" style="align-items:center;gap:10px">
+<button class="secondary" id="bdPrev">◂ Précédent</button>
+<span id="bdPageLabel" class="dim" style="font-size:12px"></span>
+<button class="secondary" id="bdNext">Suivant ▸</button>
+</div>
+<div class="dim" style="font-size:12px;margin-top:6px">Capital = solde réel du compte au moment du relevé (hors P&L non réalisé des positions encore ouvertes). % du jour = P&L réel du jour ÷ Capital relevé la veille au soir, ×100. "Compté = Non" : pas de relevé la veille, donc le % de ce jour n'entre pas dans les totaux Semaine/Mois/Année ci-dessus (le P&L brut du jour reste affiché à titre indicatif).</div>
+</div>
+</div>
+<div class="subsection" style="margin-top:16px">
+<div class="subtitle" id="toggleMacroEvents" title="Dates saisies à la main (réunions FED/BCE, publications macro...) : purement informatif, ne bloque jamais le trading. Un bandeau d'alerte apparaît J-2, J-1 et le jour même.">▸ Calendrier macro (FED, BCE, publications…)</div>
+<div id="macroEventsSection" class="subbody" style="display:none">
+<div class="grid">
+<div><label>Date</label><input type="text" id="macroDateInput" placeholder="jj/mm/aaaa" inputmode="numeric" maxlength="10"></div>
+<div><label>Libellé</label><input type="text" id="macroLabelInput" placeholder="Ex. FOMC (réunion FED)" maxlength="120"></div>
+</div>
+<div class="actions" style="margin-top:10px">
+<button class="secondary" id="macroAdd">+ Ajouter</button>
+</div>
+<table style="margin-top:12px">
+<thead><tr><th>Date</th><th>Événement</th><th></th></tr></thead>
+<tbody id="macroEventsList"><tr><td colspan="3" class="dim">En attente</td></tr></tbody>
+</table>
+<div class="dim" style="font-size:12px;margin-top:6px">Un bandeau apparaît en haut du dashboard à J-2, J-1 et le jour même d'un événement listé ici. Purement informatif : rien n'est bloqué ou modifié automatiquement côté moteur.</div>
+</div>
+</div>
+</div>
+
+<div class="card">
+<div class="title">MARCHÉ</div>
+<table>
+<thead><tr><th title="Range = comportement automatique habituel. Marché baissier = plus d'entrée automatique sur cet actif (short manuel uniquement via le bouton, stop ATR toujours actif sur une position déjà ouverte). Marché haussier = exactement symétrique, inversé LONG/SHORT (long manuel via le bouton).">Mode</th><th></th><th>Actif</th><th>Prix</th><th>Échelle</th><th>RSI clôturé</th><th>ATR</th><th>Zone</th><th>Analyse</th><th>RSI journalier</th><th>Structure EMA journalière</th><th>Biais EMA hebdo (20/50)</th><th>Support hebdo</th><th>Résistance hebdo</th></tr></thead>
+<tbody id="marketRows"><tr><td colspan="14" class="dim">En attente</td></tr></tbody>
+</table>
+</div>
+
+<div class="card">
+<div class="title">POSITIONS OUVERTES <span id="openStamp" class="dim"></span></div>
+<table>
+<thead><tr><th>Actif</th><th>Ouverte le</th><th>Side</th><th>Entry</th><th>Quantité</th><th>Montant ($)</th><th>Prix actuel</th><th>P&L %</th><th>P&L $</th><th>Stop</th><th>TP RSI</th><th>Statut</th><th>Action</th></tr></thead>
+<tbody id="openTrades"><tr><td colspan="13" class="dim">Aucun trade</td></tr></tbody>
+</table>
+</div>
+
+<div class="card">
+<div class="title">HISTORIQUE</div>
+<table>
+<thead>
+<tr>
+ <th>Date</th><th>Actif</th><th>Side</th><th>Entry</th><th>Stop</th><th>Résultat</th>
+ <th data-sort="pnlPct" style="cursor:pointer" title="Cliquer pour trier">P&L %</th>
+ <th data-sort="pnl" style="cursor:pointer" title="Cliquer pour trier">P&L</th>
+ <th data-sort="fees" style="cursor:pointer" title="Cliquer pour trier">Frais</th>
+</tr>
+<tr>
+ <th><input type="text" id="histFilterDate" placeholder="jj/mm/aaaa" inputmode="numeric" maxlength="10" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px"></th>
+ <th><select id="histFilterActif" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px"><option value="">Tous</option></select></th>
+ <th><select id="histFilterSide" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px"><option value="">Tous</option><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select></th>
+ <th></th><th></th><th></th><th></th><th></th><th></th>
+</tr>
+</thead>
+<tbody id="history"><tr><td colspan="9" class="dim">Aucun trade terminé</td></tr></tbody>
+</table>
+<div id="historyMore" class="dim" style="margin-top:9px;font-size:12px"></div>
+<div class="actions" style="align-items:center;gap:10px">
+<button class="secondary" id="historyPrev">◂ Précédent</button>
+<span id="historyPageLabel" class="dim" style="font-size:12px"></span>
+<button class="secondary" id="historyNext">Suivant ▸</button>
+</div>
+<div class="actions"><button class="secondary" id="export">Exporter en Excel (.xlsx)</button><button class="secondary" id="reset" disabled>Vider positions + historique</button></div>
+</div>
+
+<div class="card">
+<div class="title">JOURNAL</div>
+<div id="log" class="log"></div>
+</div>
+</div>
+<div id="toast"></div>
+<div id="journalOverlay" class="modal-overlay">
+<div class="modal-box">
+<h3 id="journalModalTitle">Journal de bord</h3>
+<textarea id="journalText" maxlength="4000" placeholder="Qu'est-ce qui a influencé le marché ou ta décision ce jour-là ?"></textarea>
+<label class="tag-check"><input type="checkbox" id="journalTagBadDay"> 📉 Jour de forte baisse</label>
+<div class="actions" style="margin-top:12px">
+<button id="journalSave">Enregistrer</button>
+<button class="secondary" id="journalCancel">Annuler</button>
+</div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+function fmt(x,d=5){return x==null?"—":Number(x).toLocaleString("fr-FR",{maximumFractionDigits:d})}
+function base(){return $("worker").value.trim().replace(/\/+$/,"")}
+function headers(){return {"X-Trade-Token":$("token").value.trim()}}
+async function api(path,method,bodyObj){
+ const opts={method:method||"GET",cache:"no-store",headers:headers()};
+ if(bodyObj!==undefined){opts.headers={...opts.headers,"Content-Type":"application/json"};opts.body=JSON.stringify(bodyObj)}
+ const r=await fetch(base()+path,opts);
+ const j=await r.json().catch(()=>({}));
+ if(!r.ok)throw Error(j.error||("HTTP "+r.status));
+ return j
+}
+function pairKey(s){return String(s).toUpperCase().replace(/[\/\-\s]/g,"").replace(/^BTC/,"XBT")}
+const pctMove=(side,entry,p)=>(side==="LONG"?p-entry:entry-p)/entry*100;
+const sgn=(x,d=2)=>x==null?"—":(x>=0?"+":"")+fmt(x,d);
+function tpLabel(side){return side==="LONG"?"RSI ≥ 68":"RSI ≤ 32"}
+function tpIntervalOf(t){return TF_OPTIONS.includes(+t.tpInterval)?+t.tpInterval:15}
+// Sélecteur manuel d'échelle de TAKE-PROFIT pour une position déjà ouverte — indépendant de
+// l'échelle d'entrée, réglable après coup (15 min par défaut).
+function tpIntervalSelect(t){
+ const cur=tpIntervalOf(t);
+ const opts=TF_OPTIONS.map(v=>`<option value="${v}"${cur===v?" selected":""}>${TF_LABELS[v]}</option>`).join("");
+ return `<select data-tp-interval="${t.id}" title="Échelle RSI visée pour le take-profit de cette position" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px;margin-top:3px">${opts}</select>`;
+}
+function logLine(t,l,m){const d=new Date(t).toLocaleTimeString("fr-FR");const cls=l?` class="${l}"`:"";return `<div${cls}>${d} — ${m}</div>`}
+let toastTimer=null;
+function showToast(msg,isBad){
+ const el=$("toast"); if(!el)return;
+ el.textContent=msg; el.classList.toggle("bad",!!isBad); el.classList.add("show");
+ clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("show"),4000);
+}
+
+let connected=false,polling=null,lastState=null;
+// Le changement d'échelle manuelle est pris en compte côté serveur dans les réglages tout de
+// suite, mais la valeur affichée par /state (market[].manualTf) ne se mettra à jour qu'au
+// prochain passage du moteur (jusqu'à la fin de la minute en cours) — sans ça, le menu revient
+// brièvement à l'ancienne valeur après le clic, avant de reprendre la nouvelle. On affiche donc
+// la valeur choisie tout de suite, et on ne la lâche que quand le serveur la confirme (ou après
+// un délai de sécurité, si jamais la confirmation n'arrivait pas).
+const pendingManualTf={};
+const PENDING_MANUAL_TF_TIMEOUT_MS=70000;
+// Fonction pure (copie exacte dans tests/manual-tf-display.test.js, à garder synchronisée) :
+// décide quelle valeur afficher dans le menu déroulant, et si l'attente locale doit être levée.
+function resolveManualTfDisplay(serverTf,pending,now,timeoutMs){
+ if(!pending)return{cur:serverTf,clearPending:false};
+ const confirmed=pending.tf===serverTf;
+ const expired=(now-pending.since)>timeoutMs;
+ if(confirmed||expired)return{cur:serverTf,clearPending:true};
+ return{cur:pending.tf,clearPending:false};
+}
+const SETTINGS_FIELDS=["symbols","risk","atrMult","pyramidMax","pyramidSpacing","riskCap","maxNotionalUsd","limitOffsetPct","limitExpiryMin","tpLimitOffsetPct","tpLimitExpiryMin","escalationEnabled","escThreshold0","escThreshold1","escThreshold2","dailyTargetPct","snapshotHour"];
+
+function applySettingsToInputs(s){
+ $("symbols").value=s.symbols; $("risk").value=s.risk; $("atrMult").value=s.atrMult;
+ $("pyramidMax").value=s.pyramidMax; $("pyramidSpacing").value=s.pyramidSpacing; $("riskCap").value=s.riskCap;
+ $("maxNotionalUsd").value=s.maxNotionalUsd;
+ $("limitOffsetPct").value=s.limitOffsetPct; $("limitExpiryMin").value=s.limitExpiryMin;
+ $("tpLimitOffsetPct").value=s.tpLimitOffsetPct; $("tpLimitExpiryMin").value=s.tpLimitExpiryMin;
+ $("escalationEnabled").value=String(!!s.escalationEnabled); $("escThreshold0").value=s.escThreshold0;
+ $("escThreshold1").value=s.escThreshold1; $("escThreshold2").value=s.escThreshold2;
+ $("dailyTargetPct").value=s.dailyTargetPct; $("snapshotHour").value=s.snapshotHour;
+}
+
+const LEVEL_LABELS=["15 min","1 h","2 h","3 h"];
+const TF_OPTIONS=[15,60,120,180,240];
+const TF_LABELS={15:"15 min",60:"1 h",120:"2 h",180:"3 h",240:"4 h"};
+// Juste le palier courant ("15 min", "1 h"...) — le détail "x/y avant le palier suivant" a été
+// retiré de l'affichage (trop chargé sur cette colonne), toujours calculable depuis les réglages
+// d'échelle adaptative si besoin.
+function scaleLabel(m){
+ const level=m.level||0;
+ return LEVEL_LABELS[level]||(level+" ?");
+}
+// Sélecteur manuel d'échelle d'ENTRÉE pour un actif — "Auto" revient à l'échelle adaptative.
+function manualTfSelect(symbol,m){
+ const serverTf=m.manualTf||null;
+ const{cur:curRaw,clearPending}=resolveManualTfDisplay(serverTf,pendingManualTf[symbol],Date.now(),PENDING_MANUAL_TF_TIMEOUT_MS);
+ if(clearPending)delete pendingManualTf[symbol];
+ const cur=curRaw||"";
+ const opts=`<option value=""${cur?"":" selected"}>Auto</option>`+TF_OPTIONS.map(v=>`<option value="${v}"${cur===v?" selected":""}>${TF_LABELS[v]}</option>`).join("");
+ return `<select data-manual-tf="${symbol}" title="Forcer manuellement l'échelle RSI d'entrée pour cet actif (Auto = échelle adaptative)" style="background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px;margin-top:3px">${opts}</select>`;
+}
+// Sélecteur de mode de marché par actif (Range / Marché haussier / Marché baissier) — voir
+// POST /market-mode. "Range" = comportement automatique habituel (valeur "" côté serveur).
+function marketModeSelect(symbol,mode){
+ const cur=mode||"";
+ const opts=`<option value=""${cur?"":" selected"}>Range</option>`+
+  `<option value="bullish"${cur==="bullish"?" selected":""}>Marché haussier</option>`+
+  `<option value="bearish"${cur==="bearish"?" selected":""}>Marché baissier</option>`;
+ return `<select data-market-mode="${symbol}" title="Range = automatique comme aujourd'hui. Marché baissier = entrées automatiques coupées sur cet actif (short manuel via le bouton, stop ATR toujours actif). Marché haussier = exactement symétrique, inversé LONG/SHORT (long manuel via le bouton)." style="background:var(--bg);border:1px solid var(--line);color:var(--ink);font:11px monospace;padding:2px">${opts}</select>`;
+}
+// Bouton "Ordre limite SHORT"/"Ordre limite LONG" — seulement visible quand l'actif est en mode
+// "Marché baissier" (SHORT) ou "Marché haussier" (LONG) — voir POST /manual-short-limit et
+// POST /manual-long-limit : placent un vrai ordre limite au prix choisi, même dimensionnement que
+// l'automatique, une seule position manuelle à la fois par paire.
+function modeEntryButton(symbol,label,mode){
+ if(mode==="bearish")return `<button class="secondary" data-mode-entry="${symbol}" data-mode-entry-label="${esc(label)}" data-mode-entry-dir="SHORT" style="padding:4px 8px;font-size:11px" title="Placer un vrai ordre limite SHORT au prix choisi">Ordre limite SHORT</button>`;
+ if(mode==="bullish")return `<button class="secondary" data-mode-entry="${symbol}" data-mode-entry-label="${esc(label)}" data-mode-entry-dir="LONG" style="padding:4px 8px;font-size:11px" title="Placer un vrai ordre limite LONG au prix choisi">Ordre limite LONG</button>`;
+ return "";
+}
+function renderMarket(market,context,marketMode){
+ const keys=Object.keys(market||{});
+ const mm=marketMode||{};
+ $("marketRows").innerHTML=keys.length?keys.map(k=>{
+  const m=market[k],c=(context||{})[k];
+  const mode=mm[k]||"";
+  if(m.err)return `<tr><td>${marketModeSelect(k,mode)}</td><td>${modeEntryButton(k,m.label,mode)}</td><td>${m.label}</td><td colspan="11" class="bad">${m.err}</td></tr>`;
+  const ctxCells=c&&!c.err
+   ?`<td>${c.dailyRsi!=null?fmt(c.dailyRsi,2):"—"}</td><td>${c.dailyStruct}</td><td>${c.weekBias}</td><td>${c.weekSupport!=null?fmt(c.weekSupport):"—"}</td><td>${c.weekResistance!=null?fmt(c.weekResistance):"—"}</td>`
+   :c&&c.err?`<td colspan="5" class="bad">${c.err}</td>`:`<td colspan="5" class="dim">En attente</td>`;
+  return `<tr><td>${marketModeSelect(k,mode)}</td><td>${modeEntryButton(k,m.label,mode)}</td><td>${m.label}</td><td>${fmt(m.price)}</td><td>${scaleLabel(m)}<br>${manualTfSelect(k,m)}</td><td>${fmt(m.rsi,2)}</td><td>${fmt(m.atr)}</td><td class="${m.zoneCls}">${m.zone}</td><td>${m.time?new Date(m.time).toLocaleTimeString("fr-FR"):""}</td>${ctxCells}</tr>`;
+ }).join(""):`<tr><td colspan="14" class="dim">En attente</td></tr>`;
+}
+$("marketRows").addEventListener("change",async e=>{
+ const sel=e.target.closest("[data-manual-tf]");
+ if(!sel)return;
+ const symbol=sel.dataset.manualTf, tf=sel.value?+sel.value:null;
+ sel.disabled=true;
+ pendingManualTf[symbol]={tf,since:Date.now()};
+ try{ await api("/manual-tf","POST",{symbol,tf}); poll(); }
+ catch(e){ delete pendingManualTf[symbol]; alert("Échec du changement d'échelle : "+e.message); }
+ finally{ sel.disabled=false; }
+});
+$("marketRows").addEventListener("change",async e=>{
+ const sel=e.target.closest("[data-market-mode]");
+ if(!sel)return;
+ const symbol=sel.dataset.marketMode, mode=sel.value||null;
+ sel.disabled=true;
+ try{ await api("/market-mode","POST",{symbol,mode}); poll(); }
+ catch(e2){ alert("Échec du changement de mode : "+e2.message); }
+ finally{ sel.disabled=false; }
+});
+$("marketRows").addEventListener("click",async e=>{
+ const btn=e.target.closest("[data-mode-entry]");
+ if(!btn)return;
+ const symbol=btn.dataset.modeEntry, label=btn.dataset.modeEntryLabel||symbol, dir=btn.dataset.modeEntryDir;
+ const endpoint=dir==="LONG"?"/manual-long-limit":"/manual-short-limit";
+ const m=(lastState&&lastState.market&&lastState.market[symbol])||{};
+ const suggested=m.price!=null?m.price:"";
+ const raw=prompt(`Prix de l'ordre limite ${dir} pour ${label} :`,suggested!==""?fmt(suggested,5).replace(/\s/g,""):"");
+ if(raw===null)return;
+ const price=+String(raw).replace(",",".");
+ if(!isFinite(price)||price<=0){alert("Prix invalide.");return}
+ if(!confirm(`Placer un vrai ordre LIMITE ${dir} sur ${label} au prix ${fmt(price)} ?`))return;
+ btn.disabled=true;
+ try{ await api(endpoint,"POST",{symbol,label,price}); poll(); showToast(`Ordre limite ${dir} placé ✓`); }
+ catch(e2){ alert("Ordre refusé : "+e2.message); }
+ finally{ btn.disabled=false; }
+});
+// Une position restée ouverte dans le sens "interdit" pour le mode actif de son actif (un LONG
+// en mode "Marché baissier", ou un SHORT en mode "Marché haussier") n'est jamais clôturée tout
+// seule (pas d'action automatique sur un actif en mode restreint) — on se contente de signaler le
+// décalage, le bouton "Clôturer" habituel suffit à agir. Fonction pure, copie exacte dans
+// tests/bearish-mode-ui.test.js.
+function sideMismatch(t,marketMode){
+ if(!marketMode||t.review||t.closing)return false;
+ const mode=marketMode[t.symbol];
+ if(mode==="bearish")return t.side==="LONG";
+ if(mode==="bullish")return t.side==="SHORT";
+ return false;
+}
+function statusLabel(t,marketMode){
+ if(t.review)return `<span class="bad">⚠️ À VÉRIFIER</span>`;
+ if(t.closing)return `<span class="warn">Clôture en cours…</span>`;
+ if(t.tpPending)return `<span class="warn">⏳ Sortie TP en attente (limite)</span>`;
+ if(t.manualClosePending)return `<span class="warn">⏳ Clôture manuelle en attente (limite)</span>`;
+ if(t.pending)return `<span class="warn">⏳ Ordre limite en attente</span>`;
+ const base=t.live?`<span class="bad">🔴 RÉEL</span>`:`<span class="paper">PAPER</span>`;
+ if(!sideMismatch(t,marketMode))return base;
+ const modeLabel=(marketMode[t.symbol]==="bearish")?"Marché baissier":"Marché haussier";
+ return base+` <span class="bad" title="Cet actif est en mode ${modeLabel} — cette position ${t.side} ne sera jamais clôturée automatiquement">⚠️ ${t.side} en mode ${modeLabel==="Marché baissier"?"baissier":"haussier"}</span>`;
+}
+function liveCells(t,market){
+ const m=market&&market[t.symbol];
+ if(!m||m.err||m.price==null)return `<td class="dim">—</td><td class="dim">—</td><td class="dim">—</td>`;
+ const pc=pctMove(t.side,t.entry,m.price),usd=pc/100*t.entry*t.qty,c=pc>=0?"long":"short";
+ return `<td>${fmt(m.price)}</td><td class="${c}">${sgn(pc)} %</td><td class="${c}">${sgn(usd)} $</td>`;
+}
+function renderOpen(open,market){
+ const mm=(lastState&&lastState.settings&&lastState.settings.marketMode)||{};
+ $("openTrades").innerHTML=(open&&open.length)?open.map(t=>{
+  const limitClosePending=t.tpPending||t.manualClosePending;
+  return `<tr>
+  <td>${t.label}</td><td>${new Date(t.time).toLocaleString("fr-FR")}</td><td class="${t.side==="LONG"?"long":"short"}">${t.side}</td>
+  <td>${fmt(t.entry)}</td><td>${fmt(t.qty,8)}</td><td>${fmt(t.qty*t.entry,2)}</td>${liveCells(t,market)}<td>${fmt(t.stop)}</td><td>${tpLabel(t.side)} (${TF_LABELS[tpIntervalOf(t)]})<br>${tpIntervalSelect(t)}</td>
+  <td>${statusLabel(t,mm)}</td>
+  <td>
+   <button class="secondary" data-close="${t.id}" ${(t.closing||limitClosePending)?"disabled":""}>${t.pending?"Annuler l'ordre":"Clôturer"}</button>
+   ${mm[t.symbol]&&!t.pending&&!t.closing&&!t.review&&!limitClosePending?`<button class="secondary" data-close-at-price="${t.id}" title="Clôturer cette position à un prix choisi — ordre limite réel, ou immédiat si papier">Clôturer à un prix</button>`:""}
+   ${!t.live?`<button class="secondary" data-confirm-live="${t.id}" title="Vérifie chez Kraken si cette position existe vraiment, et la repasse en réel si oui">Confirmer réelle</button>`:""}
+   ${!t.live&&!t.pending&&!t.closing&&!t.review?`<button class="secondary" data-retry-real="${t.id}" title="Retente de placer cette position en ordre limite réel chez Kraken (utile après un échec temporaire)">Retenter en réel</button>`:""}
+   <button class="secondary" data-manual-remove="${t.id}" style="color:var(--red)" title="Retire cette ligne SANS envoyer le moindre ordre à Kraken — pour une position déjà fermée/supprimée directement dans l'app Kraken (ex: après une erreur comme 'Too many requests')">Suppression manuelle</button>
+  </td>
+ </tr>`;
+ }).join(""):`<tr><td colspan="13" class="dim">Aucun trade</td></tr>`;
+}
+const FEE_RATE=0.004;   // tarif maker confirmé (0,4%), appliqué à l'entrée ET à la sortie, papier comme réel
+function tradeFees(t){ return t.fees!=null?t.fees:FEE_RATE*t.entry*t.qty+FEE_RATE*t.exit*t.qty; }
+
+// Pagination — fonction pure (aucune dépendance au DOM), gardée IDENTIQUE à la copie dans
+// tests/paginate.test.js. Toujours un résultat valide, même avec une liste vide ou une page
+// hors limites (on recadre plutôt que de planter ou de renvoyer une page vide inutilement).
+const HISTORY_PAGE_SIZE=25;
+function paginate(items,page,pageSize){
+ const total=(items||[]).length;
+ const pageCount=Math.max(1,Math.ceil(total/pageSize));
+ const clampedPage=Math.min(Math.max(1,page||1),pageCount);
+ const start=(clampedPage-1)*pageSize;
+ return { pageItems:(items||[]).slice(start,start+pageSize), page:clampedPage, pageCount, total };
+}
+
+// Filtre + tri du tableau HISTORIQUE — fonctions pures, gardées IDENTIQUES à la copie dans
+// tests/history-filters.test.js.
+function historyDateStr(t){ const d=new Date(t.resolved||t.time); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); }
+// Convertit une saisie au format français jj/mm/aaaa vers yyyy-mm-dd (format comparé par
+// matchesHistoryFilters) — "" tant que la saisie n'est pas une date complète et valide, pour ne
+// filtrer qu'une fois la date entièrement tapée plutôt que de planter sur une saisie partielle.
+function parseFrDate(str){
+ const m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(str||"");
+ if(!m)return "";
+ const day=+m[1],month=+m[2];
+ if(day<1||day>31||month<1||month>12)return "";
+ return `${m[3]}-${m[2]}-${m[1]}`;
+}
+// Ajoute automatiquement les "/" pendant la saisie (jj/mm/aaaa), en ne gardant que les chiffres.
+function formatFrDateInput(raw){
+ const digits=(raw||"").replace(/\D/g,"").slice(0,8);
+ if(digits.length>=5)return digits.slice(0,2)+"/"+digits.slice(2,4)+"/"+digits.slice(4);
+ if(digits.length>=3)return digits.slice(0,2)+"/"+digits.slice(2);
+ return digits;
+}
+function matchesHistoryFilters(t,filters){
+ if(!filters)return true;
+ if(filters.date&&historyDateStr(t)!==filters.date)return false;
+ if(filters.actif&&t.label!==filters.actif)return false;
+ if(filters.side&&t.side!==filters.side)return false;
+ return true;
+}
+function historySortValue(t,key){
+ if(key==="pnlPct")return pctMove(t.side,t.entry,t.exit);
+ if(key==="pnl")return t.pnl;
+ if(key==="fees")return tradeFees(t);
+ return 0;
+}
+function sortHistory(items,sort){
+ if(!sort||!sort.key)return items;
+ const dir=sort.dir==="asc"?1:-1;
+ return items.slice().sort((a,b)=>(historySortValue(a,sort.key)-historySortValue(b,sort.key))*dir);
+}
+
+let historyFull=[],historyPage=1;
+let historyFilters={date:"",actif:"",side:""};
+let historySort={key:null,dir:"desc"};
+
+function updateHistorySortIndicators(){
+ [["pnlPct","P&L %"],["pnl","P&L"],["fees","Frais"]].forEach(([key,label])=>{
+  const th=document.querySelector(`th[data-sort="${key}"]`);
+  if(!th)return;
+  const arrow=historySort.key===key?(historySort.dir==="asc"?" ▲":" ▼"):"";
+  th.textContent=label+arrow;
+ });
+}
+function updateHistoryActifOptions(){
+ const sel=$("histFilterActif"),current=sel.value;
+ const labels=[...new Set(historyFull.map(t=>t.label))].sort();
+ sel.innerHTML='<option value="">Tous</option>'+labels.map(l=>`<option value="${l}"${l===current?" selected":""}>${l}</option>`).join("");
+ sel.value=labels.includes(current)?current:"";
+}
+
+function renderHistory(history){
+ historyFull=history||historyFull;
+ const filtered=historyFull.filter(t=>matchesHistoryFilters(t,historyFilters));
+ const sorted=sortHistory(filtered,historySort);
+ const {pageItems,page,pageCount,total}=paginate(sorted,historyPage,HISTORY_PAGE_SIZE);
+ historyPage=page;
+ $("history").innerHTML=pageItems.length?pageItems.map(t=>`<tr>
+  <td>${new Date(t.resolved||t.time).toLocaleString("fr-FR")}</td><td>${t.label}${t.live?' <span class="bad">🔴</span>':''}</td>
+  <td class="${t.side==="LONG"?"long":"short"}">${t.side}</td>
+  <td>${fmt(t.entry)}</td><td>${fmt(t.stop)}</td>
+  <td class="${t.pnl>=0?"long":"short"}">${t.result}</td>
+  <td class="${t.pnl>=0?"long":"short"}">${sgn(pctMove(t.side,t.entry,t.exit))} %</td>
+  <td class="${t.pnl>=0?"long":"short"}">${t.pnl>=0?"+":""}${fmt(t.pnl,2)} $</td>
+  <td class="short">-${fmt(tradeFees(t),2)} $</td>
+ </tr>`).join(""):`<tr><td colspan="9" class="dim">${historyFull.length?"Aucun résultat pour ces filtres":"Aucun trade terminé"}</td></tr>`;
+ $("historyPageLabel").textContent=total?`Page ${page} / ${pageCount} (${total} trade${total>1?"s":""})`:"";
+ $("historyPrev").disabled=page<=1;
+ $("historyNext").disabled=page>=pageCount;
+ $("historyMore").textContent="";
+ updateHistorySortIndicators();
+ updateHistoryActifOptions();
+}
+$("historyPrev").onclick=()=>{ historyPage--; renderHistory(); };
+$("historyNext").onclick=()=>{ historyPage++; renderHistory(); };
+document.querySelectorAll('th[data-sort]').forEach(th=>{
+ th.addEventListener("click",()=>{
+  const key=th.dataset.sort;
+  if(historySort.key===key) historySort.dir=historySort.dir==="asc"?"desc":"asc";
+  else { historySort.key=key; historySort.dir="desc"; }
+  historyPage=1;
+  renderHistory();
+ });
+});
+$("histFilterDate").oninput=()=>{
+ const el=$("histFilterDate");
+ el.value=formatFrDateInput(el.value);
+ historyFilters.date=parseFrDate(el.value);
+ historyPage=1; renderHistory();
+};
+$("histFilterActif").onchange=()=>{ historyFilters.actif=$("histFilterActif").value; historyPage=1; renderHistory(); };
+$("histFilterSide").onchange=()=>{ historyFilters.side=$("histFilterSide").value; historyPage=1; renderHistory(); };
+
+// Filtre + tri du tableau "Détail jour par jour" (PERFORMANCE) — fonctions pures, gardées
+// IDENTIQUES à la copie dans tests/daily-breakdown-filters.test.js.
+function matchesBreakdownFilters(row,filters){
+ if(!filters)return true;
+ if(filters.date&&row.date!==filters.date)return false;
+ if(filters.included==="yes"&&!row.included)return false;
+ if(filters.included==="no"&&row.included)return false;
+ if(filters.macroOnly&&!row.macroEvent)return false;
+ if(filters.badDayOnly&&row.journalTag!=="forte_baisse")return false;
+ return true;
+}
+function breakdownSortValue(row,key){
+ if(key==="date")return Date.parse(row.date+"T00:00:00Z");
+ if(key==="equityPrev")return row.equityPrev==null?-Infinity:row.equityPrev;
+ if(key==="pnlReal")return row.pnlReal;
+ if(key==="pctReal")return row.pctReal==null?-Infinity:row.pctReal;
+ return 0;
+}
+function sortBreakdown(items,sort){
+ if(!sort||!sort.key)return items;
+ const dir=sort.dir==="asc"?1:-1;
+ return items.slice().sort((a,b)=>(breakdownSortValue(a,sort.key)-breakdownSortValue(b,sort.key))*dir);
+}
+
+const BREAKDOWN_PAGE_SIZE=25;
+let breakdownFull=[],breakdownPage=1;
+let breakdownFilters={date:"",included:"yes",macroOnly:false,badDayOnly:false};   // "Compté = Oui" par défaut
+let breakdownSort={key:"date",dir:"desc"};   // le plus récent en premier, par défaut
+
+function updateBreakdownSortIndicators(){
+ [["date","Date"],["equityPrev","Capital"],["pnlReal","P&L réel"],["pctReal","% réel"]].forEach(([key,label])=>{
+  const th=document.querySelector(`th[data-sort-bd="${key}"]`);
+  if(!th)return;
+  const arrow=breakdownSort.key===key?(breakdownSort.dir==="asc"?" ▲":" ▼"):"";
+  th.textContent=label+arrow;
+ });
+}
+function renderDailyBreakdown(rows){
+ breakdownFull=rows||breakdownFull;
+ const filtered=breakdownFull.filter(r=>matchesBreakdownFilters(r,breakdownFilters));
+ const sorted=sortBreakdown(filtered,breakdownSort);
+ const {pageItems,page,pageCount,total}=paginate(sorted,breakdownPage,BREAKDOWN_PAGE_SIZE);
+ breakdownPage=page;
+ $("dailyBreakdown").innerHTML=pageItems.length?pageItems.map(r=>`<tr>
+  <td>${r.date}${r.macroEvent?` <span title="${esc(r.macroEvent)}" style="cursor:help">📅</span>`:""}${r.journalTag==="forte_baisse"?` <span title="Jour de forte baisse" style="cursor:help">📉</span>`:""}</td>
+  <td>${r.equityPrev!=null?fmt(r.equityPrev,2)+" $":"—"}</td>
+  <td class="${r.pnlReal>=0?"long":"short"}">${r.pnlReal>=0?"+":""}${fmt(r.pnlReal,2)} $</td>
+  <td class="${r.pctReal==null?"dim":r.pctReal>=0?"long":"short"}">${pct(r.pctReal)}</td>
+  <td>${r.included?"Oui":'<span class="dim">Non</span>'}</td>
+  <td class="journal-cell" data-journal-date="${r.date}" title="${r.journal?"Cliquer pour modifier":"Cliquer pour ajouter un commentaire"}">${r.journal?esc(r.journal):"+ Ajouter"}</td>
+ </tr>`).join(""):`<tr><td colspan="6" class="dim">${breakdownFull.length?"Aucun résultat pour ces filtres":"En attente"}</td></tr>`;
+ $("bdPageLabel").textContent=total?`Page ${page} / ${pageCount} (${total} jour${total>1?"s":""})`:"";
+ $("bdPrev").disabled=page<=1;
+ $("bdNext").disabled=page>=pageCount;
+ updateBreakdownSortIndicators();
+}
+$("bdPrev").onclick=()=>{ breakdownPage--; renderDailyBreakdown(); };
+$("bdNext").onclick=()=>{ breakdownPage++; renderDailyBreakdown(); };
+document.querySelectorAll('th[data-sort-bd]').forEach(th=>{
+ th.addEventListener("click",()=>{
+  const key=th.dataset.sortBd;
+  if(breakdownSort.key===key) breakdownSort.dir=breakdownSort.dir==="asc"?"desc":"asc";
+  else { breakdownSort.key=key; breakdownSort.dir="desc"; }
+  breakdownPage=1;
+  renderDailyBreakdown();
+ });
+});
+$("bdFilterDate").oninput=()=>{
+ const el=$("bdFilterDate");
+ el.value=formatFrDateInput(el.value);
+ breakdownFilters.date=parseFrDate(el.value);
+ breakdownPage=1; renderDailyBreakdown();
+};
+$("bdFilterIncluded").onchange=()=>{ breakdownFilters.included=$("bdFilterIncluded").value; breakdownPage=1; renderDailyBreakdown(); };
+$("bdFilterMacro").onclick=()=>{
+ breakdownFilters.macroOnly=!breakdownFilters.macroOnly;
+ $("bdFilterMacro").classList.toggle("active",breakdownFilters.macroOnly);
+ breakdownPage=1; renderDailyBreakdown();
+};
+$("bdFilterBadDay").onclick=()=>{
+ breakdownFilters.badDayOnly=!breakdownFilters.badDayOnly;
+ $("bdFilterBadDay").classList.toggle("active",breakdownFilters.badDayOnly);
+ breakdownPage=1; renderDailyBreakdown();
+};
+$("toggleDailyBreakdown").onclick=()=>{
+ const sec=$("dailyBreakdownSection"),t=$("toggleDailyBreakdown"),open=sec.style.display!=="none";
+ sec.style.display=open?"none":"block";
+ t.textContent=(open?"▸ ":"▾ ")+t.textContent.slice(2);
+}
+
+// ---------------------------------------------------------------- Journal de bord (un commentaire par jour)
+let journalEditingDate=null;
+function openJournalModal(date,currentText,currentTag){
+ journalEditingDate=date;
+ $("journalModalTitle").textContent=`Journal de bord — ${date}`;
+ $("journalText").value=currentText||"";
+ $("journalTagBadDay").checked=currentTag==="forte_baisse";
+ $("journalOverlay").classList.add("show");
+ $("journalText").focus();
+}
+function closeJournalModal(){ $("journalOverlay").classList.remove("show"); journalEditingDate=null; }
+$("dailyBreakdown").addEventListener("click",e=>{
+ const cell=e.target.closest("[data-journal-date]");
+ if(!cell)return;
+ const date=cell.dataset.journalDate;
+ const row=breakdownFull.find(r=>r.date===date);
+ openJournalModal(date,row?row.journal:"",row?row.journalTag:"");
+});
+$("journalCancel").onclick=closeJournalModal;
+$("journalOverlay").addEventListener("click",e=>{ if(e.target===$("journalOverlay")) closeJournalModal(); });
+$("journalSave").onclick=async()=>{
+ if(!journalEditingDate)return;
+ const date=journalEditingDate,text=$("journalText").value;
+ const tag=$("journalTagBadDay").checked?"forte_baisse":"";
+ try{
+  await api("/journal","POST",{date,text,tag});
+  const row=breakdownFull.find(r=>r.date===date);
+  if(row){ row.journal=text; row.journalTag=tag; }
+  closeJournalModal();
+  renderDailyBreakdown();
+  showToast("Journal enregistré ✓");
+ }catch(e){ alert("Échec de l'enregistrement : "+e.message); }
+};
+
+// ---------------------------------------------------------------- Calendrier macro (saisi manuellement)
+function renderMacroEventsList(events){
+ $("macroEventsList").innerHTML=(events&&events.length)?events.map(ev=>`<tr>
+  <td>${new Date(ev.date+"T00:00:00Z").toLocaleDateString("fr-FR",{timeZone:"UTC"})}</td>
+  <td>${esc(ev.label)}</td>
+  <td><button class="secondary" data-macro-del="${ev.id}" style="padding:3px 9px;font-size:11px">✕</button></td>
+ </tr>`).join(""):`<tr><td colspan="3" class="dim">Aucun événement enregistré</td></tr>`;
+}
+async function loadMacroEvents(){
+ try{ const r=await api("/macro-events"); renderMacroEventsList(r.events||[]); }
+ catch(e){ $("macroEventsList").innerHTML=`<tr><td colspan="3" class="bad">${e.message}</td></tr>`; }
+}
+$("macroEventsList").addEventListener("click",async e=>{
+ const btn=e.target.closest("[data-macro-del]");
+ if(!btn)return;
+ try{ const r=await api("/macro-event-delete","POST",{id:btn.dataset.macroDel}); renderMacroEventsList(r.events||[]); }
+ catch(e2){ alert("Échec de la suppression : "+e2.message); }
+});
+$("macroDateInput").oninput=()=>{ $("macroDateInput").value=formatFrDateInput($("macroDateInput").value); };
+$("macroAdd").onclick=async()=>{
+ const date=parseFrDate($("macroDateInput").value), label=$("macroLabelInput").value.trim();
+ if(!date){ alert("Date incomplète ou invalide (jj/mm/aaaa)."); return; }
+ if(!label){ alert("Renseigne un libellé pour cet événement."); return; }
+ try{
+  const r=await api("/macro-events","POST",{date,label});
+  renderMacroEventsList(r.events||[]);
+  $("macroDateInput").value=""; $("macroLabelInput").value="";
+  showToast("Événement ajouté ✓");
+ }catch(e){ alert("Échec de l'ajout : "+e.message); }
+};
+$("toggleMacroEvents").onclick=()=>{
+ const sec=$("macroEventsSection"),t=$("toggleMacroEvents"),open=sec.style.display!=="none";
+ sec.style.display=open?"none":"block";
+ t.textContent=(open?"▸ ":"▾ ")+t.textContent.slice(2);
+ if(!open&&connected) loadMacroEvents();
+}
+
+// ---------------------------------------------------------------- Bandeau d'alerte (J-2/J-1/jour J)
+// Purement informatif — calculé côté serveur dans /state (upcomingMacroEvents). Fermeture
+// manuelle mémorisée par jour affiché (le bandeau réapparaît le jour suivant tant que
+// l'événement reste à J-2/J-1/jour J, exactement comme une alerte qu'on reverrait "la veille").
+function macroDismissKey(todayStr,ev){ return `td_macro_dismiss_${todayStr}_${ev.id}`; }
+function renderMacroBanner(events){
+ const el=$("macroBanner");
+ let todayStr="";
+ try{ todayStr=new Date().toISOString().slice(0,10); }catch(e){ /* ignoré */ }
+ const visible=(events||[]).filter(ev=>{
+  try{ return localStorage.getItem(macroDismissKey(todayStr,ev))!=="1"; }catch(e){ return true; }
+ });
+ if(!visible.length){ el.style.display="none"; el.innerHTML=""; return; }
+ el.style.display="block";
+ el.innerHTML=visible.map(ev=>{
+  const when=ev.daysUntil===0?"aujourd'hui":ev.daysUntil===1?"demain":`dans ${ev.daysUntil} jours`;
+  return `<div class="macro-alert">📅 <b>${esc(ev.label)}</b> — ${when} (${new Date(ev.date+"T00:00:00Z").toLocaleDateString("fr-FR",{timeZone:"UTC"})})<button data-macro-dismiss="${ev.id}">Fermer</button></div>`;
+ }).join("");
+ el.querySelectorAll("[data-macro-dismiss]").forEach(btn=>{
+  btn.onclick=()=>{
+   const ev=visible.find(e=>e.id===btn.dataset.macroDismiss);
+   if(ev){ try{ localStorage.setItem(macroDismissKey(todayStr,ev),"1"); }catch(e){ /* ignoré */ } }
+   btn.closest(".macro-alert").remove();
+   if(!el.querySelector(".macro-alert")) el.style.display="none";
+  };
+ });
+}
+
+function renderState(st){
+ lastState=st;
+ if(st.settings){
+  SETTINGS_FIELDS.forEach(id=>{ if(document.activeElement!==$(id)) applySettingsToInputsField(id,st.settings); });
+  const running=st.settings.running,armed=st.settings.armed;
+  $("start").disabled=running; $("stop").disabled=!running;
+  $("reset").disabled=false;
+  $("runStatus").innerHTML=running
+   ?(armed?'<span class="ok">🔴 Moteur actif — TRADING EN DIRECT</span>':'<span class="ok">● Moteur actif</span> — paper trading')
+   :"Moteur arrêté";
+  if(connected) $("connection").innerHTML=armed?'<span class="ok">✓ Connecté et armé</span>':'<span class="ok">✓ Connecté</span> — désarmé';
+ }
+ $("busyBadge").textContent=st.busy?"· un passage est en cours…":"";
+ renderMacroBanner(st.upcomingMacroEvents||[]);
+ renderMarket(st.market,st.context,st.settings&&st.settings.marketMode); renderOpen(st.open,st.market);
+ if(!historyFull.length) renderHistory(st.history);   // premier affichage : les 60 plus récents, en attendant /history
+ if(st.lastRun&&st.lastRun.t){
+  $("openStamp").textContent=` · moteur mis à jour à ${new Date(st.lastRun.t).toLocaleTimeString("fr-FR")}`;
+ }else{
+  $("openStamp").innerHTML=' · <span class="warn">jamais exécuté — vérifie que le Cron Trigger est bien activé (Settings > Triggers), ou clique "Lancer un passage maintenant"</span>';
+ }
+ if(st.log&&st.log.length){ $("log").innerHTML=st.log.slice().reverse().map(e=>logLine(e.t,e.l,e.m)).join(""); }
+}
+function applySettingsToInputsField(id,s){
+ const map={symbols:"symbols",risk:"risk",atrMult:"atrMult",pyramidMax:"pyramidMax",pyramidSpacing:"pyramidSpacing",riskCap:"riskCap",maxNotionalUsd:"maxNotionalUsd",limitOffsetPct:"limitOffsetPct",limitExpiryMin:"limitExpiryMin",tpLimitOffsetPct:"tpLimitOffsetPct",tpLimitExpiryMin:"tpLimitExpiryMin",escalationEnabled:"escalationEnabled",escThreshold0:"escThreshold0",escThreshold1:"escThreshold1",escThreshold2:"escThreshold2",dailyTargetPct:"dailyTargetPct",snapshotHour:"snapshotHour"};
+ if(map[id]===undefined)return;
+ $(id).value=id==="escalationEnabled"?String(!!s[id]):s[id];
+}
+
+function esc(s){return String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function pct(x){return x==null?"—":(x>=0?"+":"")+x.toLocaleString("fr-FR",{maximumFractionDigits:2})+"%"}
+function perfCls(real,objective){return real==null?"":real>=objective?"long":"short"}
+function renderPerformance(perf){
+ if(!perf){$("perfBanner").innerHTML='<tr><td>Réel</td><td colspan="4" class="dim">En attente</td></tr>';return}
+ const cols=["day","week","month","year"];
+ const row=(label,getVal,getCls)=>`<tr><td>${label}</td>`+cols.map(c=>{const b=perf.banner[c];const v=getVal(b);return `<td${getCls?` class="${getCls(b)}"`:""}>${v}</td>`}).join("")+`</tr>`;
+ $("perfBanner").innerHTML=
+  row("Réel",b=>pct(b.real),b=>perfCls(b.real,b.objective))+
+  row("Papier",b=>pct(b.paper),b=>perfCls(b.paper,b.objective))+
+  row("Objectif",b=>pct(b.objective));
+ const d=perf.banner.day;
+ $("perfNote").textContent=perf.lastSnapshotDate
+  ?`Dernier relevé de capital : ${perf.lastSnapshotDate} · semaine basée sur ${perf.banner.week.realDaysIncluded}/${perf.banner.week.daysElapsed} jour(s) avec relevé, mois sur ${perf.banner.month.realDaysIncluded}/${perf.banner.month.daysElapsed}, année sur ${perf.banner.year.realDaysIncluded}/${perf.banner.year.daysElapsed}.`
+  :"Aucun relevé de capital encore enregistré — les % apparaîtront à partir de demain, une fois deux relevés quotidiens disponibles.";
+ const statRow=(label,s)=>`<tr><td>${label}</td><td>${s.trades}</td><td>${s.winRate!=null?fmt(s.winRate,1)+" %":"—"}</td><td class="long">${s.avgWin!=null?"+"+fmt(s.avgWin,2)+" $":"—"}</td><td class="short">${s.avgLoss!=null?fmt(s.avgLoss,2)+" $":"—"}</td><td>${s.maxWinStreak}</td><td>${s.maxLossStreak}</td></tr>`;
+ $("perfStats").innerHTML=statRow("Réel",perf.stats.real)+statRow("Papier",perf.stats.paper);
+ renderDailyBreakdown(perf.dailyBreakdown||[]);
+}
+
+async function poll(){
+ try{
+  const [st,perf,hist]=await Promise.all([api("/state"),api("/performance").catch(()=>null),api("/history").catch(()=>null)]);
+  renderState(st);
+  renderPerformance(perf);
+  if(hist&&hist.history) renderHistory(hist.history);   // liste complète (jusqu'à 1000) pour la pagination
+ }catch(e){ $("runStatus").innerHTML=`<span class="bad">Connexion perdue : ${e.message}</span>` }
+}
+function startPolling(){ if(polling)return; poll(); polling=setInterval(poll,8000); }
+function stopPolling(){ clearInterval(polling); polling=null; }
+
+$("connect").onclick=async()=>{
+ try{
+  if(!base()||!$("token").value.trim())throw Error("Renseigne l'URL du Worker et le CLIENT_TOKEN.");
+  await api("/status");
+  $("connection").innerHTML='<span class="ok">✓ Connecté</span>';
+  connected=true;
+  ["balance","fees","start","saveSettings","savePerfSettings","testLong","testShort","importOld","runNow","snapshotNow","toggleTestOrder"].forEach(id=>$(id).disabled=false);
+  SETTINGS_FIELDS.forEach(id=>$(id).disabled=false);
+  localStorage.setItem("td_v8_worker",base());
+  startPolling();
+ }catch(e){ $("connection").innerHTML=`<span class="bad">✕ ${e.message}</span>`; connected=false; }
+}
+$("balance").onclick=async()=>{
+ try{ const d=await api("/balance"); const r=d.result||{}; $("balanceOut").innerHTML=Object.entries(r).map(([k,v])=>`${k}: <b>${v}</b>`).join(" · "); }
+ catch(e){ $("balanceOut").innerHTML=`<span class="bad">${e.message}</span>` }
+}
+$("toggleTestOrder").onclick=()=>{
+ const sec=$("testOrderSection");
+ sec.style.display=sec.style.display==="none"?"block":"none";
+}
+$("surveillanceConfig").addEventListener("click",e=>{
+ const t=e.target.closest("[data-sub]");
+ if(!t)return;
+ const body=$(t.dataset.sub),open=body.style.display!=="none";
+ body.style.display=open?"none":"block";
+ t.textContent=(open?"▸ ":"▾ ")+t.textContent.slice(2);
+});
+$("toggleSurveillanceConfig").onclick=()=>{
+ const sec=$("surveillanceConfig"),open=sec.style.display!=="none";
+ sec.style.display=open?"none":"block";
+ $("toggleSurveillanceConfig").innerHTML=(open?"▸":"▾")+' CONFIGURER LA SURVEILLANCE <span id="busyBadge" class="dim"></span>';
+}
+$("togglePerfConfig").onclick=()=>{
+ const sec=$("perfConfig"),t=$("togglePerfConfig"),open=sec.style.display!=="none";
+ sec.style.display=open?"none":"block";
+ t.textContent=(open?"▸ ":"▾ ")+t.textContent.slice(2);
+}
+$("fees").onclick=async()=>{
+ $("feesOut").textContent="Lecture en cours…";
+ try{
+  const d=await api("/fees");
+  const lines=Object.entries(d.pairs||{}).map(([pair,f])=>f.error
+   ?`${pair} : <span class="bad">${f.error}</span>`
+   :`${pair} — taker <b>${fmt(f.taker,2)}%</b> / maker <b>${fmt(f.maker,2)}%</b>`+(f.takerNextFee!=null?` (prochain palier : ${fmt(f.takerNextFee,2)}% à partir de ${fmt(f.takerNextVolume,0)} ${d.currency||""} de volume sur 30j)`:""));
+  $("feesOut").innerHTML=`Volume 30 jours : <b>${fmt(d.volume30d,2)} ${d.currency||""}</b><br>`+lines.join("<br>");
+ }catch(e){ $("feesOut").innerHTML=`<span class="bad">${e.message}</span>` }
+}
+async function saveAllSettings(){
+ const payload={symbols:$("symbols").value,risk:$("risk").value,atrMult:$("atrMult").value,pyramidMax:$("pyramidMax").value,pyramidSpacing:$("pyramidSpacing").value,riskCap:$("riskCap").value,maxNotionalUsd:$("maxNotionalUsd").value,limitOffsetPct:$("limitOffsetPct").value,limitExpiryMin:$("limitExpiryMin").value,tpLimitOffsetPct:$("tpLimitOffsetPct").value,tpLimitExpiryMin:$("tpLimitExpiryMin").value,escalationEnabled:$("escalationEnabled").value==="true",escThreshold0:$("escThreshold0").value,escThreshold1:$("escThreshold1").value,escThreshold2:$("escThreshold2").value,dailyTargetPct:$("dailyTargetPct").value,snapshotHour:$("snapshotHour").value};
+ const d=await api("/settings","POST",payload);
+ applySettingsToInputs(d.settings);
+ poll();
+}
+$("saveSettings").onclick=async()=>{ try{ await saveAllSettings(); showToast("Réglages enregistrés ✓"); }catch(e){ alert("Réglages refusés : "+e.message) } }
+$("savePerfSettings").onclick=async()=>{ try{ await saveAllSettings(); showToast("Réglages enregistrés ✓"); }catch(e){ alert("Réglages refusés : "+e.message) } }
+$("start").onclick=async()=>{
+ if(!lastState)return;
+ const krakenReady=lastState.kraken&&lastState.kraken.configured;
+ let armed=false;
+ if(krakenReady){
+  armed=confirm(
+   "⚠️ Clés Kraken configurées sur le Worker.\n\n"+
+   "Une fois démarré, le moteur tourne 24h/24 côté Cloudflare (même appareils éteints) et "+
+   "chaque signal confirmé placera un VRAI ordre au marché, avec stop-loss attaché et levier 3:1.\n"+
+   "Plafonds : 100 USD de notionnel max par position, 2 positions ouvertes max.\n\n"+
+   "Clique OK pour démarrer en trading en direct, ou Annuler pour rester en paper trading."
+  );
+ }
+ try{ await api("/settings","POST",{running:true,armed}); poll(); }
+ catch(e){ alert("Démarrage refusé : "+e.message) }
+}
+$("stop").onclick=async()=>{
+ try{ await api("/settings","POST",{running:false}); poll(); }
+ catch(e){ alert("Arrêt refusé : "+e.message) }
+}
+$("runNow").onclick=async()=>{
+ $("runNow").disabled=true;
+ try{ const r=await api("/run-now","POST",{}); poll(); if(!r.ran) alert("Passage non exécuté : "+(r.reason||"raison inconnue")); }
+ catch(e){ alert("Échec : "+e.message) }
+ finally{ $("runNow").disabled=false; }
+}
+$("snapshotNow").onclick=async()=>{
+ $("snapshotNow").disabled=true;
+ try{
+  const r=await api("/snapshot-now","POST",{});
+  await poll();
+  showToast(r.already?"Un relevé existait déjà pour aujourd'hui ✓":"Relevé du jour enregistré ✓");
+ }catch(e){ alert("Échec du relevé manuel : "+e.message) }
+ finally{ $("snapshotNow").disabled=false; }
+}
+$("testLong").onclick=()=>testOrder("LONG");
+$("testShort").onclick=()=>testOrder("SHORT");
+async function testOrder(dir){
+ const raw=($("testSymbol").value||"").trim();
+ if(!raw){alert("Indique un actif (BTC ou XRP).");return}
+ const out=$("testOrderOut");
+ out.textContent="Calcul de l'aperçu…";
+ let preview;
+ try{ preview=(await api("/test-order","POST",{symbol:raw,dir,dryRun:true})).preview; }
+ catch(e){ out.innerHTML=`<span class="bad">✕ ${e.message}</span>`; return }
+ if(!confirm(`Test ${dir} sur ${preview.label} — volume ${fmt(preview.volume,8)} (≈${fmt(preview.notional,2)} USD, minimum Kraken ${fmt(preview.orderMin,8)}), prix≈${fmt(preview.price)}, stop≈${fmt(preview.stop)}.\n\nUn vrai ordre sera envoyé à Kraken. Continuer ?`))return;
+ out.textContent="Envoi de l'ordre…";
+ try{
+  const res=await api("/test-order","POST",{symbol:raw,dir});
+  out.innerHTML=`<span class="ok">✓ Ordre test envoyé — txid ${res.txid||"—"}</span>`;
+  poll();
+ }catch(e){ out.innerHTML=`<span class="bad">✕ ${e.message}</span>` }
+}
+$("reset").onclick=async()=>{
+ const nOpen=lastState?lastState.open.length:0;
+ if(!confirm(`Vider ${nOpen} position(s) ouverte(s) et tout l'historique ? Pense à exporter en Excel avant si tu veux garder une trace. Cette action est irréversible.`))return;
+ try{ await api("/reset","POST",{}); poll(); }
+ catch(e){ alert("Échec : "+e.message) }
+}
+$("importOld").onclick=async()=>{
+ const out=$("importOut");
+ let open=[],history=[];
+ try{ open=JSON.parse(localStorage.getItem("td_v6_paper_open")||"[]"); history=JSON.parse(localStorage.getItem("td_v6_paper_history")||"[]"); }
+ catch(e){ out.innerHTML='<span class="bad">Données locales illisibles.</span>'; return }
+ if(!open.length&&!history.length){ out.innerHTML="<span class=\"dim\">Aucune donnée d'ancienne version trouvée dans ce navigateur.</span>"; return }
+ if(!confirm(`Importer ${open.length} position(s) ouverte(s) et ${history.length} trade(s) historiques depuis ce navigateur ?\n\nToute position importée sera toujours remise en PAPIER par sécurité, même si elle était réelle avant.`))return;
+ try{ const r=await api("/import","POST",{open,history}); out.innerHTML=`<span class="ok">✓ Importé : ${r.open} position(s), ${r.history} trade(s)${r.forcedPaper?`, ${r.forcedPaper} repassée(s) en papier`:""}.</span>`; poll(); }
+ catch(e){ out.innerHTML=`<span class="bad">✕ ${e.message}</span>` }
+}
+
+const utc=t=>t?new Date(t).toISOString().slice(0,19).replace("T"," "):"";
+$("export").onclick=async()=>{
+ if(typeof XLSX==="undefined"){alert("La librairie d'export (XLSX) n'a pas pu se charger — vérifie ta connexion et réessaie.");return}
+ if(!connected){alert("Connecte-toi d'abord.");return}
+ let h=[],o=lastState?lastState.open:[];
+ try{ h=(await api("/history")).history; }catch(e){ h=lastState?lastState.history:[]; }
+ const hRows=h.map(t=>({"Entrée (UTC)":utc(t.time),"Sortie (UTC)":utc(t.resolved),"Actif":t.label,"Side":t.side,"Entry":t.entry,"Stop":t.stop,"Sortie":t.exit,"Résultat":t.result,"RSI sortie":t.exitRsi,"Raison":t.exitReason,"Quantité":t.qty,"Risque ($)":t.risk,"P&L (%)":+pctMove(t.side,t.entry,t.exit).toFixed(3),"P&L ($)":t.pnl,"Frais estimés ($)":+tradeFees(t).toFixed(4),"Réel":t.live?"Oui":"Non","Txid entrée":t.entryTxId||"","Txid clôture":t.closeTxId||"","Durée (h)":t.resolved?+((t.resolved-t.time)/3600000).toFixed(2):""}));
+ const oRows=o.map(t=>({"Entrée (UTC)":utc(t.time),"Actif":t.label,"Side":t.side,"Entry":t.entry,"Stop":t.stop,"TP":tpLabel(t.side),"Quantité":t.qty,"Risque ($)":t.risk,"Réel":t.live?"Oui":"Non","Txid entrée":t.entryTxId||""}));
+ const wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(hRows),"Historique");
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(oRows),"Positions ouvertes");
+ XLSX.writeFile(wb,"trading-v8-"+new Date().toISOString().slice(0,16).replace(/[:T]/g,"-")+".xlsx");
+}
+
+$("openTrades").addEventListener("change",async e=>{
+ const sel=e.target.closest("[data-tp-interval]");
+ if(!sel)return;
+ const id=sel.dataset.tpInterval, tf=+sel.value;
+ sel.disabled=true;
+ try{ await api("/tp-interval","POST",{id,tf}); poll(); }
+ catch(e){ alert("Échec du changement d'échelle de take-profit : "+e.message); }
+ finally{ sel.disabled=false; }
+});
+$("openTrades").addEventListener("click",async e=>{
+ const retryBtn=e.target.closest("[data-retry-real]");
+ if(retryBtn){
+  const id=retryBtn.dataset.retryReal;
+  const t=(lastState&&lastState.open||[]).find(x=>x.id===id);
+  if(!t)return;
+  if(!confirm(`Retenter de placer ${t.side} ${t.label} en ordre LIMITE RÉEL chez Kraken (prix d'entrée ${fmt(t.entry)}, stop ${fmt(t.stop)}) ?\n\nUn vrai ordre sera envoyé.`))return;
+  retryBtn.disabled=true;
+  try{
+   const r=await api("/retry-real","POST",{id});
+   if(r.alreadyLive){ alert("Cette position est déjà marquée réelle."); }
+   else{ alert(`Ordre limite réel placé — en attente de remplissage.`); }
+   poll();
+  }catch(e){ alert("Nouvelle tentative refusée : "+e.message); retryBtn.disabled=false; }
+  return;
+ }
+ const closeAtPriceBtn=e.target.closest("[data-close-at-price]");
+ if(closeAtPriceBtn){
+  const id=closeAtPriceBtn.dataset.closeAtPrice;
+  const t=(lastState&&lastState.open||[]).find(x=>x.id===id);
+  if(!t)return;
+  const m=(lastState&&lastState.market&&lastState.market[t.symbol])||{};
+  const suggested=m.price!=null?m.price:t.entry;
+  const raw=prompt(`Prix de clôture (ordre limite si réel, immédiat si papier) pour ${t.side} ${t.label} (entry ${fmt(t.entry)}) :`,fmt(suggested,5).replace(/\s/g,""));
+  if(raw===null)return;
+  const price=+String(raw).replace(",",".");
+  if(!isFinite(price)||price<=0){alert("Prix invalide.");return}
+  if(!confirm(`Clôturer ${t.side} ${t.label} à ${fmt(price)} ?`))return;
+  closeAtPriceBtn.disabled=true;
+  try{ await api("/manual-close-limit","POST",{id,price}); poll(); }
+  catch(e2){ alert("Clôture refusée : "+e2.message); closeAtPriceBtn.disabled=false; }
+  return;
+ }
+ const removeBtn=e.target.closest("[data-manual-remove]");
+ if(removeBtn){
+  const id=removeBtn.dataset.manualRemove;
+  const t=(lastState&&lastState.open||[]).find(x=>x.id===id);
+  if(!t)return;
+  const m=(lastState&&lastState.market&&lastState.market[t.symbol])||{};
+  const suggested=m.price!=null?m.price:t.entry;
+  const raw=prompt(`Supprimer ${t.side} ${t.label} (entry ${fmt(t.entry)}) du dashboard SANS envoyer le moindre ordre à Kraken — à utiliser seulement si cette position a déjà été fermée ou supprimée directement dans l'app Kraken.\n\nPrix auquel elle a été fermée sur Kraken (sert au calcul du P&L enregistré — laisse vide pour utiliser le prix d'entrée) :`,fmt(suggested,5).replace(/\s/g,""));
+  if(raw===null)return;
+  const priceRaw=String(raw).trim();
+  const price=priceRaw===""?null:+priceRaw.replace(",",".");
+  if(price!==null&&(!isFinite(price)||price<=0)){alert("Prix invalide.");return}
+  if(!confirm(`Confirme : ${t.side} ${t.label} a bien déjà été fermée/supprimée directement dans Kraken, et cette action ne doit QUE retirer la ligne ici (aucun ordre ne sera envoyé) ?`))return;
+  removeBtn.disabled=true;
+  try{ await api("/manual-remove","POST",price!==null?{id,price}:{id}); poll(); showToast("Ligne supprimée du dashboard ✓"); }
+  catch(e2){ alert("Suppression refusée : "+e2.message); removeBtn.disabled=false; }
+  return;
+ }
+ const confirmBtn=e.target.closest("[data-confirm-live]");
+ if(confirmBtn){
+  const id=confirmBtn.dataset.confirmLive;
+  const t=(lastState&&lastState.open||[]).find(x=>x.id===id);
+  if(!t)return;
+  if(!confirm(`Vérifier chez Kraken si ${t.side} ${t.label} correspond à une vraie position ouverte, et la repasser en réel si oui ?`))return;
+  confirmBtn.disabled=true;
+  try{
+   const r=await api("/confirm-live","POST",{id});
+   if(r.alreadyLive){ alert("Cette position est déjà marquée réelle."); }
+   else{ alert(`Confirmée réelle — quantité ajustée à ${r.trade.qty} d'après Kraken.`+(r.matches>1?"\n\nAttention : plusieurs positions correspondantes trouvées chez Kraken, vérifie qu'il n'y en a pas d'autres à traiter.":"")); }
+   poll();
+  }catch(e){ alert("Confirmation refusée : "+e.message); confirmBtn.disabled=false; }
+  return;
+ }
+ const btn=e.target.closest("[data-close]");
+ if(!btn)return;
+ const id=btn.dataset.close;
+ const t=(lastState&&lastState.open||[]).find(x=>x.id===id);
+ if(!t)return;
+ if(t.pending){
+  if(!confirm(`Annuler l'ordre limite en attente — ${t.side} ${t.label}, prix ${fmt(t.entry)} ?\n\nIl ne s'est pas encore rempli chez Kraken, aucun frais n'a été payé.`))return;
+  btn.disabled=true;
+  try{ await api("/manual-close","POST",{id}); poll(); }
+  catch(e){ alert("Annulation refusée : "+e.message); btn.disabled=false; }
+  return;
+ }
+ if(t.live){
+  if(!confirm(`Clôturer immédiatement au marché — ${t.side} ${t.label}, entrée réelle ${fmt(t.entry)} ?\n\nUn vrai ordre sera envoyé à Kraken.`))return;
+  btn.disabled=true;
+  try{ await api("/manual-close","POST",{id}); poll(); }
+  catch(e){ alert("Clôture refusée : "+e.message); btn.disabled=false; }
+  return;
+ }
+ const m=(lastState&&lastState.market&&lastState.market[t.symbol])||{};
+ const suggested=m.price!=null?m.price:t.entry;
+ const raw=prompt(`Prix de l'ordre limite de clôture pour ${t.side} ${t.label} (entry ${fmt(t.entry)}) :`,fmt(suggested,5).replace(/\s/g,""));
+ if(raw===null)return;
+ const price=+String(raw).replace(",",".");
+ if(!isFinite(price)||price<=0){alert("Prix invalide.");return}
+ if(!confirm(`Clôturer ${t.side} ${t.label} à ${fmt(price)} ?`))return;
+ try{ await api("/manual-close","POST",{id,price}); poll(); }
+ catch(e){ alert("Clôture refusée : "+e.message) }
+});
+
+$("worker").value=localStorage.getItem("td_v8_worker")||localStorage.getItem("td_v6_worker")||"";
+</script>
+</body>
+</html>
